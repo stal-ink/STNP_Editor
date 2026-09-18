@@ -1,0 +1,129 @@
+{
+  "format": "stnp",
+  "schema_version": "stnp-schema-alpha",
+  "project_name": "handshake",
+  "protocol": {
+    "name": "STNP",
+    "version": "2.3",
+    "byte_order": "little",
+    "max_payload": 32,
+    "router_instance_max": 4,
+    "task": {
+      "sof": [
+        170,
+        85
+      ],
+      "seq": {
+        "type": "u16",
+        "start": 1,
+        "reserved": [
+          0
+        ]
+      }
+    },
+    "notify": {
+      "sof": [
+        170,
+        51
+      ]
+    },
+    "features": {
+      "crc": {
+        "enabled": false
+      }
+    },
+    "options": {
+      "notify_dispatch_receive": {
+        "enabled": true
+      }
+    }
+  },
+  "global_results": [
+    {
+      "name": "OK",
+      "value": 0,
+      "brief": "工程级成功"
+    }
+  ],
+  "modules": [
+    {
+      "name": "LINK",
+      "enabled": true,
+      "return_codes": [
+        {
+          "name": "OK",
+          "value": 256,
+          "brief": "accepted"
+        },
+        {
+          "name": "BUSY",
+          "value": 257,
+          "brief": "busy"
+        }
+      ],
+      "commands": [
+        {
+          "name": "CONNECT_REQ",
+          "code": 1,
+          "doc": {
+            "brief": "start a user-level handshake",
+            "detail": "User code may explicitly send CONNECT_ACCEPT after accepting the request."
+          },
+          "validate_hook": true,
+          "notify_on_accept": {
+            "notify": "CONNECT_ACCEPT"
+          },
+          "notify_on_reject": {
+            "notify": "CONNECT_REJECT"
+          },
+          "payload": [
+            {
+              "name": "token",
+              "type": "u16"
+            }
+          ]
+        },
+        {
+          "name": "CONNECT_CONFIRM",
+          "code": 2,
+          "doc": {
+            "brief": "confirm the user-level handshake"
+          },
+          "validate_hook": false,
+          "payload": [
+            {
+              "name": "token",
+              "type": "u16"
+            }
+          ]
+        }
+      ],
+      "notifications": [
+        {
+          "name": "CONNECT_ACCEPT",
+          "code": 1,
+          "brief": "request accepted; echoes token",
+          "payload": [
+            {
+              "name": "token",
+              "type": "u16"
+            }
+          ]
+        },
+        {
+          "name": "CONNECT_REJECT",
+          "code": 2,
+          "brief": "validator rejected request",
+          "payload": []
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "name": "LinkPeer",
+      "module": "LINK",
+      "id": 1
+    }
+  ]
+}

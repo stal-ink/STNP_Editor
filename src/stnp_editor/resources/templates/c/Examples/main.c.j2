@@ -1,0 +1,96 @@
+/**
+ ******************************************************************************
+ * @file    main.c
+ * @brief   Generated demo using unified STNP structured send APIs.
+ ******************************************************************************
+ */
+
+#include <stdio.h>
+
+#include "../Instance/stnp_instances.h"
+#include "transport_mock.h"
+
+{% set ns = namespace(task_inst=none, task_cmd=none, notify_inst=none, notify=none) %}
+{% for inst in ir.instances %}
+{% if ns.task_inst is none and inst.module.commands %}
+{% set ns.task_inst=inst %}
+{% set ns.task_cmd=inst.module.commands[0] %}
+{% endif %}
+{% if ns.notify_inst is none and inst.module.notifications %}
+{% set ns.notify_inst=inst %}
+{% set ns.notify=inst.module.notifications[0] %}
+{% endif %}
+{% endfor %}
+{% if ns.notify_inst is not none %}
+void {{ ns.notify_inst.module.notify_callback_fn }}(
+    {{ ns.notify_inst.module.handle_type }} *self,
+    STNP_U8 notify_code,
+    {{ ns.notify_inst.module.result_type }} result,
+    const void *payload
+)
+{
+    STNP_UNUSED(self);
+    STNP_UNUSED(notify_code);
+    STNP_UNUSED(payload);
+
+    printf("[typed notify] result=%u\n", (unsigned int)result);
+}
+{% endif %}
+
+static void STNP_Demo_Pump(void)
+{
+    STNP_U8 i;
+    for (i = 0U; i < 16U; i++)
+    {
+        STNP_Result process_result = STNP_Process();
+        STNP_Result dispatch_result = STNP_Dispatch();
+        if ((process_result == STNP_IDLE) && (dispatch_result == STNP_IDLE))
+        {
+            break;
+        }
+    }
+}
+
+int main(void)
+{
+{% if ns.task_cmd is not none and ns.task_cmd.payload_struct %}
+    {{ ns.task_cmd.payload_struct }} task_payload = {0};
+{% endif %}
+{% if ns.notify is not none and ns.notify.payload_struct %}
+    {{ ns.notify.payload_struct }} notify_payload = {0};
+{% endif %}
+
+    if ((STNP_Init(TransportMock_Write) != STNP_OK) ||
+        (STNP_Instances_Init() != STNP_OK))
+    {
+        return 1;
+    }
+{% if ns.notify_inst is not none %}
+
+    {{ ns.notify_inst.module.notify_callback_enable_fn }}(STNP_ENABLE);
+{% endif %}
+{% if ns.task_inst is not none %}
+
+    (void)STNP_Task_Send(
+        STNP_INSTANCE_{{ ns.task_inst.macro }}_ID,
+        {{ ns.task_inst.module.name }}_CMD_{{ ns.task_cmd.name }},
+{% if ns.task_cmd.payload_struct %}        &task_payload
+{% else %}        STNP_NULL
+{% endif %}    );
+{% endif %}
+{% if ns.notify_inst is not none %}
+
+    (void)STNP_Notify_Send(
+        STNP_INSTANCE_{{ ns.notify_inst.macro }}_ID,
+        {{ ns.notify.macro_name }},
+        {{ ns.notify_inst.module.result_ok }},
+{% if ns.notify.payload_struct %}        &notify_payload
+{% else %}        STNP_NULL
+{% endif %}    );
+{% endif %}
+
+    STNP_Demo_Pump();
+
+    printf("demo ok\n");
+    return 0;
+}

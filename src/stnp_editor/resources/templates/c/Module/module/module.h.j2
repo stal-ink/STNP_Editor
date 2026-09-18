@@ -1,0 +1,138 @@
+/**
+ ******************************************************************************
+ * @file    {{ m.snake }}.h
+ * @brief   {{ m.pascal }} typed Payload and module-level API.
+ *
+ * This header exposes Payload types and receive-side Module APIs only.
+ * Sending is unified in Core: STNP_Task_Send/STNP_Notify_Send for typed Payload,
+ * and STNP_Task_SendBytes/STNP_Notify_SendBytes for raw byte arrays.
+ ******************************************************************************
+ */
+
+#ifndef {{ m.header_guard }}
+#define {{ m.header_guard }}
+
+#include "../stnp_module.h"
+
+typedef enum
+{
+{% for cmd in m.commands %}
+    {{ m.name }}_CMD_{{ cmd.name }} = {{ cmd.code | hex2 }}{% if not loop.last %},{% endif %}{{ "\n" }}{% else %}
+    {{ m.name }}_CMD_NONE = 0{{ "\n" }}{% endfor %}
+} {{ m.pascal }}_Command;
+
+typedef enum
+{
+{% for n in m.notifications %}
+    {{ n.macro_name }} = {{ n.code | hex2 }}{% if not loop.last %},{% endif %}{{ "\n" }}{% else %}
+    {{ m.name }}_NOTIFY_NONE = 0{{ "\n" }}{% endfor %}
+} {{ m.pascal }}_Notify;
+
+typedef enum
+{
+{% for r in m.return_codes %}
+    {{ r.enum_member }} = {{ r.value | hex4 }}{% if not loop.last %},{% endif %}{{ "\n" }}{% endfor %}
+} {{ m.result_type }};
+
+{% for cmd in m.commands %}
+{% if cmd.payload_struct %}
+typedef struct
+{
+{% for f in cmd.fields %}
+    {{ f.c_type }} {{ f.name }};
+{% endfor %}
+} {{ cmd.payload_struct }};
+
+{% endif %}
+{% endfor %}
+{% for n in m.notifications %}
+{% if n.payload_struct %}
+typedef struct
+{
+{% for f in n.fields %}
+    {{ f.c_type }} {{ f.name }};
+{% endfor %}
+} {{ n.payload_struct }};
+
+{% endif %}
+{% endfor %}
+{% set sizes = namespace(any=false) %}
+{% for cmd in m.commands %}{% if cmd.payload_length %}{% set sizes.any = true %}{% endif %}{% endfor %}
+{% for n in m.notifications %}{% if n.payload_length %}{% set sizes.any = true %}{% endif %}{% endfor %}
+enum
+{
+{% if sizes.any %}
+{% for cmd in m.commands %}
+{% if cmd.payload_length %}
+    {{ m.name }}_{{ cmd.name }}_PAYLOAD_SIZE = {{ cmd.payload_length }}U,{{ "\n" }}{% endif %}
+{% endfor %}
+{% for n in m.notifications %}
+{% if n.payload_length %}
+    {{ m.name }}_{{ n.name }}_PAYLOAD_SIZE = {{ n.payload_length }}U,{{ "\n" }}{% endif %}
+{% endfor %}
+{% else %}
+    {{ m.name }}_PAYLOAD_SIZE_NONE = 0U
+{% endif %}
+};
+
+typedef struct {{ m.handle_type }} {{ m.handle_type }};
+typedef {{ m.result_type }} (*{{ m.validator_typedef }})(
+    {{ m.handle_type }} *self,
+    STNP_U8 cmd,
+    const void *payload
+);
+
+struct {{ m.handle_type }}
+{
+    STNP_ModuleHandle base;
+};
+
+/* Framework lifecycle / routing. */
+void {{ m.pascal }}_Init({{ m.handle_type }} *self, STNP_U8 id);
+STNP_ModuleHandle *{{ m.pascal }}_AsModule({{ m.handle_type }} *self);
+STNP_Result {{ m.on_task_fn }}(
+    {{ m.handle_type }} *self,
+    STNP_U8 cmd,
+    const STNP_U8 *payload,
+    STNP_U8 len
+);
+void {{ m.validator_setter }}(STNP_U8 cmd, {{ m.validator_typedef }} fn);
+{% set validate_cmds = m.commands | selectattr("validate_hook") | list %}
+{% if validate_cmds %}/* Generated module validator: dispatch by command code, auto-check field ranges. */
+{{ m.result_type }} {{ m.pascal }}_ValidateGenerated(
+    {{ m.handle_type }} *self,
+    STNP_U8 cmd,
+    const void *payload
+);
+{% endif %}
+
+/* Module-level Notify callback. One callback per Module, optional at runtime. */
+void {{ m.notify_callback_enable_fn }}(STNP_EnableState state);
+void {{ m.notify_callback_fn }}(
+    {{ m.handle_type }} *self,
+    STNP_U8 notify_code,
+    {{ m.result_type }} result,
+    const void *payload
+);
+
+/* User business functions, named only from CMD. */
+{% for cmd in m.commands %}
+{% if cmd.payload_struct %}
+void {{ cmd.user_symbol }}(
+    {{ m.handle_type }} *self,
+    const {{ cmd.payload_struct }} *payload
+);
+{% else %}
+void {{ cmd.user_symbol }}({{ m.handle_type }} *self);
+{% endif %}
+{% endfor %}
+
+/* Framework Notify route used by generated instance registry. */
+STNP_Result {{ m.notify_dispatch_fn }}(
+    {{ m.handle_type }} *self,
+    STNP_U8 notify_code,
+    STNP_U16 result,
+    const STNP_U8 *payload,
+    STNP_U8 length
+);
+#endif /* {{ m.header_guard }} */

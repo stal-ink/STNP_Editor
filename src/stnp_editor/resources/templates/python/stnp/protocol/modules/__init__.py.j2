@@ -1,0 +1,6 @@
+{% for m in ir.modules %}from .{{ m.snake }} import {{ m.pascal }}, {{ m.pascal }}Result
+{% endfor %}
+
+__all__ = [
+{% for m in ir.modules %}    "{{ m.pascal }}", "{{ m.pascal }}Result",
+{% endfor %}]

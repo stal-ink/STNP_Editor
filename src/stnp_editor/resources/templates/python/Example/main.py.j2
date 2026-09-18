@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+import sys
+import time
+from pathlib import Path
+
+# Allows `python Example/main.py` directly from the generated tree.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import stnp
+from stnp.protocol import *
+from mock_serial import MockSerial
+
+
+# Module-level command implementations. Instance-specific decorators can override these.
+{% for m in ir.modules %}{% for cmd in m.commands %}@{{ m.pascal }}.cmd.{{ cmd.name }}.func
+def on_{{ m.snake }}_{{ cmd.name | lower }}(self{% if cmd.fields %}, payload{% endif %}):
+    print("TASK", self.name, "{{ m.name }}.{{ cmd.name }}"{% if cmd.fields %}, payload{% endif %})
+
+{% endfor %}{% endfor %}
+{% for m in ir.modules %}{% if m.commands %}{% set cmd = m.commands[0] %}{% if cmd.validate_hook %}@{{ m.pascal }}.cmd.{{ cmd.name }}.validate
+def validate_{{ m.snake }}_{{ cmd.name | lower }}(self{% if cmd.fields %}, payload{% endif %}):
+    return {{ m.pascal }}.OK
+
+{% endif %}{% endif %}{% endfor %}
+{% for m in ir.modules %}{% if m.notifications %}{% set n = m.notifications[0] %}@{{ m.pascal }}.notify.{{ n.name }}.func
+def on_{{ m.snake }}_{{ n.name | lower }}(self, result{% if n.fields %}, payload{% endif %}):
+    print("NOTIFY", self.name, "{{ m.name }}.{{ n.name }}", result{% if n.fields %}, payload{% endif %})
+
+{% endif %}{% endfor %}
+
+def _payload_kwargs(descriptor):
+    return {
+        field.name: (field.min_value if field.min_value is not None else 0)
+        for field in descriptor.fields
+    }
+
+
+def main() -> None:
+    mock = MockSerial()
+    stnp.init(transport=mock)
+
+    # Build a task set. Instance.task.CMD(...) only builds; stnp.task(...) sends the batch.
+    batch = []
+    for instance in list(REGISTRY.instances.values())[:4]:
+        commands = instance.module.cmd.values()
+        if not commands:
+            continue
+        command = commands[0]
+        batch.append(command.bind(instance)(**_payload_kwargs(command)))
+    if batch:
+        stnp.task(*batch)
+
+    # Send one notification through the same mock link when available.
+    for instance in REGISTRY.instances.values():
+        notifications = instance.module.notify.values()
+        if notifications:
+            notification = notifications[0]
+            stnp.notify(notification.bind(instance)(instance.module.OK, **_payload_kwargs(notification)))
+            break
+
+    time.sleep(0.15)
+    print("stats:", stnp.stats)
+    stnp.shutdown()
+
+
+if __name__ == "__main__":
+    main()

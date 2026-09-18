@@ -1,0 +1,351 @@
+/**
+ ******************************************************************************
+ * @file    {{ m.snake }}.c
+ * @brief   Generated {{ m.pascal }} VTL metadata and dispatch implementation.
+ ******************************************************************************
+ */
+
+#include "{{ m.snake }}.h"
+#include "../../Core/stnp_notify.h"
+#include "../../Core/stnp_vtl.h"
+
+{% set auto_commands = m.commands | selectattr("has_auto_notify") | list %}
+{% for cmd in m.commands %}{% if cmd.validate_hook %}static {{ m.validator_typedef }} g_validate_{{ cmd.ops_member }} = STNP_NULL;
+{% endif %}{% endfor %}static STNP_EnableState g_notify_callback_enabled = STNP_DISABLE;
+
+{% if m.auto_notify_enabled and auto_commands %}enum
+{
+    {{ m.name }}_AUTO_NOTIFY_ACCEPT = 0x01U,
+    {{ m.name }}_AUTO_NOTIFY_REJECT = 0x02U,
+    {{ m.name }}_AUTO_NOTIFY_DONE = 0x04U
+};
+
+typedef struct
+{
+    STNP_U8 cmd;
+    STNP_U8 flags;
+    STNP_U8 accept_code;
+    STNP_U8 reject_code;
+    STNP_U8 done_code;
+} {{ m.pascal }}_AutoNotifyDesc;
+
+static const {{ m.pascal }}_AutoNotifyDesc g_{{ m.snake }}_auto_notify[] =
+{
+{% for cmd in auto_commands %}    {
+        {{ m.name }}_CMD_{{ cmd.name }},
+        {{ (1 if cmd.notify_on_accept else 0) + (2 if cmd.notify_on_reject else 0) + (4 if cmd.notify_on_done else 0) }}U,
+        {{ cmd.notify_on_accept.macro_name if cmd.notify_on_accept else "0U" }},
+        {{ cmd.notify_on_reject.macro_name if cmd.notify_on_reject else "0U" }},
+        {{ cmd.notify_on_done.macro_name if cmd.notify_on_done else "0U" }}
+    }{% if not loop.last %},{% endif %}{{ "\n" }}{% endfor %}};
+
+static const {{ m.pascal }}_AutoNotifyDesc *{{ m.pascal }}_AutoNotifyFind(STNP_U8 cmd)
+{
+    STNP_U16 i;
+    for (i = 0U; i < (STNP_U16)(sizeof(g_{{ m.snake }}_auto_notify) / sizeof(g_{{ m.snake }}_auto_notify[0])); ++i)
+    {
+        if (g_{{ m.snake }}_auto_notify[i].cmd == cmd)
+        {
+            return &g_{{ m.snake }}_auto_notify[i];
+        }
+    }
+    return STNP_NULL;
+}
+
+static STNP_Result {{ m.pascal }}_AutoNotifySend(
+    {{ m.handle_type }} *self,
+    const {{ m.pascal }}_AutoNotifyDesc *desc,
+    STNP_U8 stage,
+    {{ m.result_type }} result)
+{
+    STNP_U8 code;
+
+    if ((desc == STNP_NULL) || ((desc->flags & stage) == 0U))
+    {
+        return STNP_OK;
+    }
+
+    if (stage == {{ m.name }}_AUTO_NOTIFY_ACCEPT)
+    {
+        code = desc->accept_code;
+    }
+    else if (stage == {{ m.name }}_AUTO_NOTIFY_REJECT)
+    {
+        code = desc->reject_code;
+    }
+    else
+    {
+        code = desc->done_code;
+    }
+
+    return STNP_Notify_Send(self->base.id, code, (STNP_U16)result, STNP_NULL);
+}
+
+{% endif %}/* VTL metadata only: codec algorithm lives in Core/stnp_vtl.c. */
+{% for cmd in m.commands %}{% if cmd.payload_struct %}static const STNP_VTL_Field g_{{ m.snake }}_task_{{ cmd.ops_member }}_fields[] =
+{
+{% for f in cmd.fields %}    { (STNP_U16)offsetof({{ cmd.payload_struct }}, {{ f.name }}), STNP_VTL_{{ f.type_name | upper }} }{% if not loop.last %},{% endif %}{{ "\n" }}{% endfor %}};
+
+{% endif %}{% endfor %}{% if m.commands %}static const STNP_VTL_Desc g_{{ m.snake }}_task_vtl[] =
+{
+{% for cmd in m.commands %}    {
+        {{ m.name }}_CMD_{{ cmd.name }},
+        {{ cmd.payload_length }}U,
+        {{ cmd.fields | length }}U,
+        {{ ("g_" ~ m.snake ~ "_task_" ~ cmd.ops_member ~ "_fields") if cmd.payload_struct else "STNP_NULL" }}
+    }{% if not loop.last %},{% endif %}{{ "\n" }}{% endfor %}};
+
+{% endif %}{% for n in m.notifications %}{% if n.payload_struct %}static const STNP_VTL_Field g_{{ m.snake }}_notify_{{ n.name | lower }}_fields[] =
+{
+{% for f in n.fields %}    { (STNP_U16)offsetof({{ n.payload_struct }}, {{ f.name }}), STNP_VTL_{{ f.type_name | upper }} }{% if not loop.last %},{% endif %}{{ "\n" }}{% endfor %}};
+
+{% endif %}{% endfor %}{% if m.notifications %}static const STNP_VTL_Desc g_{{ m.snake }}_notify_vtl[] =
+{
+{% for n in m.notifications %}    {
+        {{ n.macro_name }},
+        {{ n.payload_length }}U,
+        {{ n.fields | length }}U,
+        {{ ("g_" ~ m.snake ~ "_notify_" ~ (n.name | lower) ~ "_fields") if n.payload_struct else "STNP_NULL" }}
+    }{% if not loop.last %},{% endif %}{{ "\n" }}{% endfor %}};
+
+{% endif %}void {{ m.pascal }}_Init({{ m.handle_type }} *self, STNP_U8 id)
+{
+    if (self == STNP_NULL)
+    {
+        return;
+    }
+    self->base.id = id;
+    self->base.ops = STNP_NULL;
+}
+
+void {{ m.validator_setter }}(STNP_U8 cmd, {{ m.validator_typedef }} fn)
+{
+{% set validators = m.commands | selectattr("validate_hook") | list %}{% if not validators %}    STNP_UNUSED(fn);
+{% endif %}    switch (cmd)
+    {
+{% for cmd in m.commands %}{% if cmd.validate_hook %}    case {{ m.name }}_CMD_{{ cmd.name }}:
+        g_validate_{{ cmd.ops_member }} = fn;
+        break;
+{% endif %}{% endfor %}    default:
+        break;
+    }
+}
+
+void {{ m.notify_callback_enable_fn }}(STNP_EnableState state)
+{
+    g_notify_callback_enabled = state;
+}
+
+STNP_Result {{ m.on_task_fn }}({{ m.handle_type }} *self, STNP_U8 cmd, const STNP_U8 *payload, STNP_U8 len)
+{
+{% if m.commands %}    const STNP_VTL_Desc *desc = STNP_VTL_Find(
+        g_{{ m.snake }}_task_vtl,
+        (STNP_U16)(sizeof(g_{{ m.snake }}_task_vtl) / sizeof(g_{{ m.snake }}_task_vtl[0])),
+        cmd
+    );
+{% if m.auto_notify_enabled and auto_commands %}    const {{ m.pascal }}_AutoNotifyDesc *auto_notify = {{ m.pascal }}_AutoNotifyFind(cmd);
+{% endif %}
+{% endif %}{% if not m.commands %}    STNP_UNUSED(payload);
+    STNP_UNUSED(len);
+{% endif %}    if (self == STNP_NULL)
+    {
+        return STNP_ERR_PARAM;
+    }
+{% if m.commands %}    if (desc == STNP_NULL)
+    {
+        return STNP_ERR_COMMAND;
+    }
+{% endif %}
+    switch (cmd)
+    {
+{% for cmd in m.commands %}    case {{ m.name }}_CMD_{{ cmd.name }}:
+{% if cmd.payload_struct %}    {
+        {{ cmd.payload_struct }} typed_payload;
+{% if cmd.validate_hook %}        {{ m.result_type }} vr;
+{% endif %}        STNP_Result dr = STNP_VTL_Decode(desc, payload, len, &typed_payload);
+
+        if (dr != STNP_OK)
+        {
+            return dr;
+        }
+{% if cmd.validate_hook %}        if (g_validate_{{ cmd.ops_member }} != STNP_NULL)
+        {
+            vr = g_validate_{{ cmd.ops_member }}(self, cmd, &typed_payload);
+        }
+        else
+        {
+            vr = {{ m.pascal }}_ValidateGenerated(self, cmd, &typed_payload);
+        }
+        if (vr != {{ m.result_ok }})
+        {
+{% if m.auto_notify_enabled and cmd.notify_on_reject %}            return {{ m.pascal }}_AutoNotifySend(
+                self, auto_notify, {{ m.name }}_AUTO_NOTIFY_REJECT, vr
+            );
+{% else %}            return STNP_ERR_PARAM;
+{% endif %}        }
+{% endif %}{% if m.auto_notify_enabled and cmd.notify_on_accept %}        {
+            STNP_Result auto_result = {{ m.pascal }}_AutoNotifySend(
+                self, auto_notify, {{ m.name }}_AUTO_NOTIFY_ACCEPT, {{ m.result_ok }}
+            );
+            if (auto_result != STNP_OK)
+            {
+                return auto_result;
+            }
+        }
+{% endif %}        {{ cmd.user_symbol }}(self, &typed_payload);
+{% if m.auto_notify_enabled and cmd.notify_on_done %}        return {{ m.pascal }}_AutoNotifySend(
+            self, auto_notify, {{ m.name }}_AUTO_NOTIFY_DONE, {{ m.result_ok }}
+        );
+{% else %}        return STNP_OK;
+{% endif %}    }
+{% else %}    {
+        STNP_Result dr = STNP_VTL_Decode(desc, payload, len, STNP_NULL);
+
+        if (dr != STNP_OK)
+        {
+            return dr;
+        }
+{% if cmd.validate_hook %}        {
+            {{ m.result_type }} vr;
+            if (g_validate_{{ cmd.ops_member }} != STNP_NULL)
+            {
+                vr = g_validate_{{ cmd.ops_member }}(self, cmd, STNP_NULL);
+            }
+            else
+            {
+                vr = {{ m.pascal }}_ValidateGenerated(self, cmd, STNP_NULL);
+            }
+            if (vr != {{ m.result_ok }})
+            {
+{% if m.auto_notify_enabled and cmd.notify_on_reject %}            return {{ m.pascal }}_AutoNotifySend(
+                self, auto_notify, {{ m.name }}_AUTO_NOTIFY_REJECT, vr
+            );
+{% else %}            return STNP_ERR_PARAM;
+{% endif %}            }
+        }
+{% endif %}{% if m.auto_notify_enabled and cmd.notify_on_accept %}        {
+            STNP_Result auto_result = {{ m.pascal }}_AutoNotifySend(
+                self, auto_notify, {{ m.name }}_AUTO_NOTIFY_ACCEPT, {{ m.result_ok }}
+            );
+            if (auto_result != STNP_OK)
+            {
+                return auto_result;
+            }
+        }
+{% endif %}        {{ cmd.user_symbol }}(self);
+{% if m.auto_notify_enabled and cmd.notify_on_done %}        return {{ m.pascal }}_AutoNotifySend(
+            self, auto_notify, {{ m.name }}_AUTO_NOTIFY_DONE, {{ m.result_ok }}
+        );
+{% else %}        return STNP_OK;
+{% endif %}    }
+{% endif %}{% endfor %}    default:
+        return STNP_ERR_COMMAND;
+    }
+}
+
+static STNP_Result {{ m.pascal }}_TaskHandler(STNP_ModuleHandle *base, STNP_U8 code, const STNP_U8 *payload, STNP_U16 length)
+{
+    if (length > 255U)
+    {
+        return STNP_ERR_LENGTH;
+    }
+    return {{ m.on_task_fn }}(({{ m.handle_type }} *)base, code, payload, (STNP_U8)length);
+}
+
+static const STNP_ModuleOps g_{{ m.snake }}_module_ops =
+{
+    {{ m.pascal }}_TaskHandler,
+{% if m.commands %}    g_{{ m.snake }}_task_vtl,
+    (STNP_U16)(sizeof(g_{{ m.snake }}_task_vtl) / sizeof(g_{{ m.snake }}_task_vtl[0])),
+{% else %}    STNP_NULL,
+    0U,
+{% endif %}{% if m.notifications %}    g_{{ m.snake }}_notify_vtl,
+    (STNP_U16)(sizeof(g_{{ m.snake }}_notify_vtl) / sizeof(g_{{ m.snake }}_notify_vtl[0]))
+{% else %}    STNP_NULL,
+    0U
+{% endif %}};
+
+STNP_ModuleHandle *{{ m.pascal }}_AsModule({{ m.handle_type }} *self)
+{
+    if (self == STNP_NULL)
+    {
+        return STNP_NULL;
+    }
+    self->base.ops = &g_{{ m.snake }}_module_ops;
+    return &self->base;
+}
+
+STNP_WEAK void {{ m.notify_callback_fn }}({{ m.handle_type }} *self, STNP_U8 notify_code, {{ m.result_type }} result, const void *payload)
+{
+    STNP_UNUSED(self);
+    STNP_UNUSED(notify_code);
+    STNP_UNUSED(result);
+    STNP_UNUSED(payload);
+}
+
+STNP_Result {{ m.notify_dispatch_fn }}({{ m.handle_type }} *self, STNP_U8 notify_code, STNP_U16 result, const STNP_U8 *payload, STNP_U8 length)
+{
+{% if not m.notifications %}    STNP_UNUSED(result);
+    STNP_UNUSED(payload);
+    STNP_UNUSED(length);
+{% endif %}{% if m.notifications %}    const STNP_VTL_Desc *desc = STNP_VTL_Find(
+        g_{{ m.snake }}_notify_vtl,
+        (STNP_U16)(sizeof(g_{{ m.snake }}_notify_vtl) / sizeof(g_{{ m.snake }}_notify_vtl[0])),
+        notify_code
+    );
+
+{% endif %}    if (self == STNP_NULL)
+    {
+        return STNP_ERR_PARAM;
+    }
+{% if m.notifications %}    if (desc == STNP_NULL)
+    {
+        return STNP_ERR_COMMAND;
+    }
+{% endif %}
+    switch (notify_code)
+    {
+{% for n in m.notifications %}    case {{ n.macro_name }}:
+{% if n.payload_struct %}    {
+        {{ n.payload_struct }} typed_payload;
+        STNP_Result dr = STNP_VTL_Decode(desc, payload, length, &typed_payload);
+
+        if (dr != STNP_OK)
+        {
+            return dr;
+        }
+        if (g_notify_callback_enabled == STNP_ENABLE)
+        {
+            {{ m.notify_callback_fn }}(self, notify_code, ({{ m.result_type }})result, &typed_payload);
+        }
+        return STNP_OK;
+    }
+{% else %}    {
+        STNP_Result dr = STNP_VTL_Decode(desc, payload, length, STNP_NULL);
+
+        if (dr != STNP_OK)
+        {
+            return dr;
+        }
+        if (g_notify_callback_enabled == STNP_ENABLE)
+        {
+            {{ m.notify_callback_fn }}(self, notify_code, ({{ m.result_type }})result, STNP_NULL);
+        }
+        return STNP_OK;
+    }
+{% endif %}{% endfor %}    default:
+        return STNP_ERR_COMMAND;
+    }
+}
+
+{% for cmd in m.commands %}STNP_WEAK {% if cmd.payload_struct %}void {{ cmd.user_symbol }}({{ m.handle_type }} *self, const {{ cmd.payload_struct }} *payload)
+{
+    STNP_UNUSED(self);
+    STNP_UNUSED(payload);
+}
+{% else %}void {{ cmd.user_symbol }}({{ m.handle_type }} *self)
+{
+    STNP_UNUSED(self);
+}
+{% endif %}
+{% endfor %}

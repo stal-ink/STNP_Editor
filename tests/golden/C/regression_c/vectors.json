@@ -1,0 +1,197 @@
+{
+  "project": "multi_demo",
+  "crc_enabled": false,
+  "seq_enabled": false,
+  "task_fixed_size": 5,
+  "notify_fixed_size": 7,
+  "vectors": [
+    {
+      "kind": "task",
+      "instance": "ChassisMain",
+      "module": "CHASSIS",
+      "command": "MOVE",
+      "target": 1,
+      "code": 1,
+      "payload": {
+        "direction": 1,
+        "speed": 1
+      },
+      "hex": "AA 55 01 01 02 01 01"
+    },
+    {
+      "kind": "task",
+      "instance": "ChassisMain",
+      "module": "CHASSIS",
+      "command": "STOP",
+      "target": 1,
+      "code": 2,
+      "payload": {},
+      "hex": "AA 55 01 02 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "ChassisMain",
+      "module": "CHASSIS",
+      "notify": "DONE",
+      "source": 1,
+      "notify_code": 1,
+      "payload": {},
+      "hex": "AA 33 01 01 00 00 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "ChassisMain",
+      "module": "CHASSIS",
+      "notify": "TASK_ACCEPTED",
+      "source": 1,
+      "notify_code": 2,
+      "payload": {},
+      "hex": "AA 33 01 02 00 00 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "ChassisMain",
+      "module": "CHASSIS",
+      "notify": "TASK_REJECTED",
+      "source": 1,
+      "notify_code": 3,
+      "payload": {},
+      "hex": "AA 33 01 03 00 00 00"
+    },
+    {
+      "kind": "task",
+      "instance": "MotorMain",
+      "module": "MOTOR",
+      "command": "SET_SPEED",
+      "target": 2,
+      "code": 3,
+      "payload": {
+        "speed": 0,
+        "accel": 0
+      },
+      "hex": "AA 55 02 03 03 00 00 00"
+    },
+    {
+      "kind": "task",
+      "instance": "MotorMain",
+      "module": "MOTOR",
+      "command": "HOLD",
+      "target": 2,
+      "code": 4,
+      "payload": {
+        "torque": 0
+      },
+      "hex": "AA 55 02 04 02 00 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "MotorMain",
+      "module": "MOTOR",
+      "notify": "DONE",
+      "source": 2,
+      "notify_code": 1,
+      "payload": {},
+      "hex": "AA 33 02 01 00 00 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "MotorMain",
+      "module": "MOTOR",
+      "notify": "FAULT",
+      "source": 2,
+      "notify_code": 2,
+      "payload": {},
+      "hex": "AA 33 02 02 00 00 00"
+    },
+    {
+      "kind": "task",
+      "instance": "SensorFront",
+      "module": "SENSOR",
+      "command": "READ",
+      "target": 3,
+      "code": 5,
+      "payload": {},
+      "hex": "AA 55 03 05 00"
+    },
+    {
+      "kind": "task",
+      "instance": "SensorFront",
+      "module": "SENSOR",
+      "command": "CALIBRATE",
+      "target": 3,
+      "code": 6,
+      "payload": {
+        "offset": 1,
+        "gain": 1
+      },
+      "hex": "AA 55 03 06 06 01 00 00 00 01 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "SensorFront",
+      "module": "SENSOR",
+      "notify": "DATA",
+      "source": 3,
+      "notify_code": 1,
+      "payload": {
+        "value": 1
+      },
+      "hex": "AA 33 03 01 00 00 02 01 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "SensorFront",
+      "module": "SENSOR",
+      "notify": "DONE",
+      "source": 3,
+      "notify_code": 2,
+      "payload": {},
+      "hex": "AA 33 03 02 00 00 00"
+    },
+    {
+      "kind": "task",
+      "instance": "SensorRear",
+      "module": "SENSOR",
+      "command": "READ",
+      "target": 4,
+      "code": 5,
+      "payload": {},
+      "hex": "AA 55 04 05 00"
+    },
+    {
+      "kind": "task",
+      "instance": "SensorRear",
+      "module": "SENSOR",
+      "command": "CALIBRATE",
+      "target": 4,
+      "code": 6,
+      "payload": {
+        "offset": 1,
+        "gain": 1
+      },
+      "hex": "AA 55 04 06 06 01 00 00 00 01 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "SensorRear",
+      "module": "SENSOR",
+      "notify": "DATA",
+      "source": 4,
+      "notify_code": 1,
+      "payload": {
+        "value": 1
+      },
+      "hex": "AA 33 04 01 00 00 02 01 00"
+    },
+    {
+      "kind": "notify",
+      "instance": "SensorRear",
+      "module": "SENSOR",
+      "notify": "DONE",
+      "source": 4,
+      "notify_code": 2,
+      "payload": {},
+      "hex": "AA 33 04 02 00 00 00"
+    }
+  ]
+}

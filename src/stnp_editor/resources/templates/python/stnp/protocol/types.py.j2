@@ -1,0 +1,8 @@
+from enum import IntEnum
+
+{% for t in ir.common_types %}{% if t.kind == 'enum' %}class {{ t.name }}(IntEnum):
+{% for name, value in t.values %}    {{ name }} = {{ value }}
+{% endfor %}
+{% else %}{{ t.name }} = int
+{% endif %}
+{% endfor %}

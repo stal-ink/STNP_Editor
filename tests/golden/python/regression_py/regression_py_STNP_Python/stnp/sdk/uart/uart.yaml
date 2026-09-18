@@ -1,0 +1,5 @@
+# User-editable UART SDK configuration. Kept separate from protocol configuration.
+port: auto
+baudrate: 115200
+timeout: 0.02
+write_timeout: 1.0

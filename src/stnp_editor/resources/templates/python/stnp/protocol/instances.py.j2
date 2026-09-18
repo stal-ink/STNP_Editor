@@ -1,0 +1,9 @@
+from stnp.core import InstanceDefinition
+from .modules import *
+
+{% for i in ir.instances %}{{ i.pascal }} = InstanceDefinition(name={{ i.name | repr }}, id={{ i.id_value }}, module={{ i.module.pascal }})
+{% endfor %}
+
+INSTANCES = {
+{% for i in ir.instances %}    {{ i.name | repr }}: {{ i.pascal }},
+{% endfor %}}

@@ -1,0 +1,49 @@
+{
+  "schemas_dir": "schemas",
+  "schema_files": {
+    "stnp": "stnp.schema.json",
+    "protocol": "protocol.schema.json",
+    "module": "module.schema.json",
+    "common_types": "common_types.schema.json",
+    "build": "stnp.build.schema.json"
+  },
+  "templates": {
+    "c": "templates/c",
+    "python": "templates/python"
+  },
+  "dir_names": {
+    "core": "Core",
+    "module": "Module",
+    "instance": "Instance",
+    "examples": "Examples",
+    "platform": "Platform",
+    "implementation": "Implementation",
+    "sdk": "SDK"
+  },
+  "sdk_registry": {
+    "stm32_hal_uart": {
+      "label": "STM32 HAL UART",
+      "template_dir": "SDK/STM32_HAL",
+      "output_dir": "STM32_HAL",
+      "files": [
+        "stnp_hal_uart.h",
+        "stnp_hal_uart.c"
+      ]
+    },
+    "freertos": {
+      "label": "FreeRTOS Deferred Runtime",
+      "template_dir": "SDK/FreeRTOS",
+      "output_dir": "FreeRTOS",
+      "files": [
+        "stnp_freertos.h",
+        "stnp_freertos.c"
+      ]
+    }
+  },
+  "python_sdk_registry": {
+    "uart": {
+      "label": "UART (pyserial)",
+      "namespace": "stnp.sdk.uart"
+    }
+  }
+}

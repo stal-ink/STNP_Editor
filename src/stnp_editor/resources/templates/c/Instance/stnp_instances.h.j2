@@ -1,0 +1,19 @@
+/**
+ ******************************************************************************
+ * @file    stnp_instances.h
+ * @brief   Generated instance IDs and router initialization.
+ ******************************************************************************
+ */
+
+#ifndef __STNP_INSTANCES_H
+#define __STNP_INSTANCES_H
+
+#include "../Core/stnp_core.h"
+#include "../Core/stnp_task.h"
+#include "../Core/stnp_notify.h"
+{% for m in ir.modules %}#include "../Module/{{ m.dir_name }}/{{ m.snake }}.h"
+{% endfor %}
+{% for inst in ir.instances %}#define STNP_INSTANCE_{{ inst.macro }}_ID {{ inst.id_value | hex2 }}
+{% endfor %}
+STNP_Result STNP_Instances_Init(void);
+#endif /* __STNP_INSTANCES_H */

@@ -1,0 +1,42 @@
+/**
+ ******************************************************************************
+ * @file    stnp_crc.c
+ * @brief   CRC16-Modbus 计算（仅在 protocol.features.crc.enabled 时生成）。
+ *
+ * CRC 存在性只由生成期开关决定，无运行时开关。
+ * 用户禁止修改协议代码。
+ ******************************************************************************
+ */
+
+#include "stnp_crc.h"
+
+STNP_U16 STNP_CRC16(const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_U16 crc;
+    STNP_U16 i;
+    STNP_U8 bit;
+
+    crc = 0xFFFFU;
+    if (data == STNP_NULL)
+    {
+        return crc;
+    }
+
+    for (i = 0U; i < length; i++)
+    {
+        crc = (STNP_U16)(crc ^ data[i]);
+        for (bit = 0U; bit < 8U; bit++)
+        {
+            if ((crc & 0x0001U) != 0U)
+            {
+                crc = (STNP_U16)((crc >> 1) ^ 0xA001U);
+            }
+            else
+            {
+                crc = (STNP_U16)(crc >> 1);
+            }
+        }
+    }
+
+    return crc;
+}

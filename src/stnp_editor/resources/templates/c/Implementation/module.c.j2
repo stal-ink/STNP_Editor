@@ -1,0 +1,67 @@
+/**
+ ******************************************************************************
+ * @file    {{ m.snake }}_impl.c
+ * @brief   {{ m.pascal }} user business implementation.
+ ******************************************************************************
+ */
+
+#include "../Instance/stnp_instances.h"
+
+/* USER CODE BEGIN Includes */
+
+/* USER CODE END Includes */
+
+/* USER CODE BEGIN Private */
+
+/* USER CODE END Private */
+
+{% set validate_cmds = m.commands | selectattr("validate_hook") | list %}
+{% set rns = namespace(reject=none) %}
+{% for r in m.return_codes %}{% if rns.reject is none and (("PARAM" in r.name) or ("INVALID" in r.name) or ("REJECT" in r.name)) %}{% set rns.reject = r.enum_member %}{% endif %}{% endfor %}
+{% if validate_cmds %}
+/**
+ ******************************************************************************
+ * @brief Generated {{ m.pascal }} validator. Dispatches by command code and
+ *        checks payload fields against their base type range and min/max.
+ ******************************************************************************
+ */
+{{ m.result_type }} {{ m.pascal }}_ValidateGenerated({{ m.handle_type }} *self, STNP_U8 cmd, const void *payload)
+{
+    STNP_UNUSED(self);
+    switch (cmd)
+    {
+{% for cmd in validate_cmds %}    case {{ m.name }}_CMD_{{ cmd.name }}:
+    {
+{% if cmd.payload_struct %}        const {{ cmd.payload_struct }} *typed = (const {{ cmd.payload_struct }} *)payload;
+        STNP_UNUSED(typed);
+{% for f in cmd.fields %}{% if f.needs_min_check %}        if (typed->{{ f.name }} < {{ f.min_value }}) return {{ rns.reject if rns.reject is not none else "(" ~ m.result_type ~ ")STNP_ERR_PARAM" }};
+{% endif %}{% if f.needs_max_check %}        if (typed->{{ f.name }} > {{ f.max_value }}) return {{ rns.reject if rns.reject is not none else "(" ~ m.result_type ~ ")STNP_ERR_PARAM" }};
+{% endif %}{% endfor %}{% else %}        STNP_UNUSED(payload);
+{% endif %}        return {{ m.result_ok }};
+    }
+{% endfor %}    default:
+        return {{ m.result_ok }};
+    }
+}
+{% endif %}
+{% for cmd in m.commands %}
+/**
+ ******************************************************************************
+ * @brief {{ cmd.user_brief }}
+ ******************************************************************************
+ */
+{% if cmd.payload_struct %}void {{ cmd.user_symbol }}({{ m.handle_type }} *self, const {{ cmd.payload_struct }} *payload)
+{
+    /* USER CODE BEGIN {{ cmd.user_symbol }} */
+    STNP_UNUSED(self); STNP_UNUSED(payload);
+    /* USER CODE END {{ cmd.user_symbol }} */
+}
+{% else %}void {{ cmd.user_symbol }}({{ m.handle_type }} *self)
+{
+    /* USER CODE BEGIN {{ cmd.user_symbol }} */
+    STNP_UNUSED(self);
+    /* USER CODE END {{ cmd.user_symbol }} */
+}
+{% endif %}
+
+{% endfor %}

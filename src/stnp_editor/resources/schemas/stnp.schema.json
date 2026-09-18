@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stnp.local/schemas/stnp.schema.json",
+  "title": "STNP single-file project",
+  "type": "object",
+  "required": [
+    "format",
+    "schema_version",
+    "project_name",
+    "protocol",
+    "modules",
+    "instances",
+    "global_results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "stnp"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "stnp-schema-alpha"
+    },
+    "project_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol": {
+      "type": "object"
+    },
+    "common_types": {
+      "type": "object"
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object"
+      }
+    },
+    "instances": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "module",
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "module": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255
+          }
+        }
+      }
+    },
+    "global_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "value": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "brief": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "embedded_files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "content",
+          "encoding"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "text",
+              "base64"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

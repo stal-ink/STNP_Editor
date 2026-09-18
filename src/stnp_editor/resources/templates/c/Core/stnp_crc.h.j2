@@ -1,0 +1,18 @@
+/**
+ ******************************************************************************
+ * @file    stnp_crc.h
+ * @brief   STNP CRC16-Modbus（仅在 protocol.features.crc.enabled 时生成）。
+ *
+ * CRC 存在性只由生成期开关决定，无运行时开关。
+ * 用户禁止修改协议代码。
+ ******************************************************************************
+ */
+
+#ifndef __STNP_CRC_H
+#define __STNP_CRC_H
+
+#include "stnp_core.h"
+
+STNP_U16 STNP_CRC16(const STNP_U8 *data, STNP_U16 length);
+
+#endif /* __STNP_CRC_H */

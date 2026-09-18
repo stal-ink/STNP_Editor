@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+
+from .core import InstanceDefinition, NotifySpec, Runtime, TaskSpec
+from .protocol import PROTOCOL, REGISTRY
+from . import sdk
+
+__version__ = "0.9.0"
+
+_runtime = Runtime(PROTOCOL, REGISTRY)
+
+
+def _runtime_config(path: str | Path | None = None) -> dict:
+    candidates = []
+    if path is not None:
+        candidates.append(Path(path))
+    if os.environ.get("STNP_CONFIG"):
+        candidates.append(Path(os.environ["STNP_CONFIG"]))
+    candidates.extend([
+        Path.cwd() / "config" / "stnp.yaml",
+        Path(__file__).resolve().parents[1] / "config" / "stnp.yaml",
+    ])
+    for candidate in candidates:
+        if candidate.is_file():
+            data = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+            if not isinstance(data, dict):
+                raise ValueError(f"STNP config root must be a mapping: {candidate}")
+            return data
+    return {}
+
+
+def init(transport=None, *, port=None, baudrate=None, config=None, queue_size=None, warn_missing=None):
+    cfg = _runtime_config(config)
+    runtime_cfg = dict(cfg.get("runtime") or {})
+    if transport is None:
+        transport_name = str(cfg.get("transport", "uart"))
+        if transport_name != "uart":
+            raise RuntimeError("No transport provided. Pass transport=... to stnp.init().")
+        # UART performs the pyserial distribution check before opening any serial port.
+        from .sdk.uart import UARTTransport
+        transport = UARTTransport(port=port, baudrate=baudrate)
+    qsize = int(queue_size if queue_size is not None else runtime_cfg.get("dispatch_queue", 1024))
+    warning = bool(warn_missing if warn_missing is not None else runtime_cfg.get("warn_missing_implementation", True))
+    return _runtime.init(transport, queue_size=qsize, warn_missing=warning)
+
+
+def shutdown() -> None:
+    _runtime.shutdown()
+
+
+def on_notify(fn):
+    return _runtime.on_notify(fn)
+
+
+def check_implementations():
+    return _runtime.check_implementations()
+
+
+def notify_dispatch_receive_enable() -> None:
+    _runtime.notify_dispatch_receive_enable()
+
+
+def notify_dispatch_receive_disable() -> None:
+    _runtime.notify_dispatch_receive_disable()
+
+
+def notify_dispatch_receive_is_enabled() -> bool:
+    return _runtime.notify_dispatch_receive_is_enabled()
+
+
+class _ImmediateTaskInstance:
+    def __init__(self, instance):
+        self.instance = instance
+
+    def __getattr__(self, name):
+        bound = getattr(self.instance.task, name)
+        def send(*args, **kwargs):
+            return _runtime.send_task(bound(*args, **kwargs))
+        return send
+
+
+class _TaskAPI:
+    def __call__(self, *args, **kwargs):
+        if args and all(isinstance(item, TaskSpec) for item in args) and not kwargs:
+            return _runtime.send_task(*args)
+        if len(args) >= 2 and isinstance(args[0], InstanceDefinition):
+            instance, command, *payload_args = args
+            return _runtime.send_task_dynamic(instance, command, *payload_args, **kwargs)
+        raise TypeError("stnp.task expects TaskSpec(s) or (instance, command, payload...)")
+
+    def __getattr__(self, name):
+        try:
+            instance = REGISTRY.instances[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+        return _ImmediateTaskInstance(instance)
+
+
+class _ImmediateNotifyInstance:
+    def __init__(self, instance):
+        self.instance = instance
+
+    def __getattr__(self, name):
+        bound = getattr(self.instance.notify, name)
+        def send(result, *args, **kwargs):
+            return _runtime.send_notify(bound(result, *args, **kwargs))
+        return send
+
+
+class _NotifyAPI:
+    def __call__(self, *args, **kwargs):
+        if args and all(isinstance(item, NotifySpec) for item in args) and not kwargs:
+            return _runtime.send_notify(*args)
+        if len(args) >= 3 and isinstance(args[0], InstanceDefinition):
+            instance, notification, result, *payload_args = args
+            return _runtime.send_notify_dynamic(instance, notification, result, *payload_args, **kwargs)
+        raise TypeError("stnp.notify expects NotifySpec(s) or (instance, notification, result, payload...)")
+
+    def __getattr__(self, name):
+        try:
+            instance = REGISTRY.instances[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+        return _ImmediateNotifyInstance(instance)
+
+
+task = _TaskAPI()
+notify = _NotifyAPI()
+stats = _runtime.stats
+
+# Protocol objects are re-exported for concise user code.
+from .protocol import *  # noqa: E402,F401,F403
+from .protocol import __all__ as _protocol_exports  # noqa: E402
+
+__all__ = [
+    "init",
+    "shutdown",
+    "on_notify",
+    "check_implementations",
+    "task",
+    "notify",
+    "stats",
+    "notify_dispatch_receive_enable",
+    "notify_dispatch_receive_disable",
+    "notify_dispatch_receive_is_enabled",
+    *_protocol_exports,
+]

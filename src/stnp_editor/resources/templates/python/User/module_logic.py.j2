@@ -1,0 +1,17 @@
+"""User-owned {{ m.pascal }} logic scaffold.
+
+Created once by STNP Editor. Regeneration never overwrites or deletes this file.
+"""
+
+from stnp.protocol import {{ m.pascal }}
+
+{% for cmd in m.commands %}# Uncomment and implement when needed:
+# @{{ m.pascal }}.cmd.{{ cmd.name }}.func
+# def {{ m.snake }}_{{ cmd.name | lower }}(self{% if cmd.fields %}, payload{% endif %}):
+#     pass
+
+{% if cmd.validate_hook %}# @{{ m.pascal }}.cmd.{{ cmd.name }}.validate
+# def validate_{{ m.snake }}_{{ cmd.name | lower }}(self{% if cmd.fields %}, payload{% endif %}):
+#     return {{ m.pascal }}.OK
+
+{% endif %}{% endfor %}

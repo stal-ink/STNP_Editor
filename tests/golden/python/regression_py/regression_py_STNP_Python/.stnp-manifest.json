@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "Example/README.md",
+      "kind": "generated"
+    },
+    {
+      "path": "Example/main.py",
+      "kind": "generated"
+    },
+    {
+      "path": "Example/mock_serial.py",
+      "kind": "generated"
+    },
+    {
+      "path": "README.md",
+      "kind": "generated"
+    },
+    {
+      "path": "config/stnp.yaml",
+      "kind": "generated"
+    },
+    {
+      "path": "pyproject.toml",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/codec.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/crc.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/dispatch.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/errors.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/frame.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/model.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/runtime.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/stats.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/transport.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/constants.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/instances.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/modules/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/modules/link.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/modules/sensor.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/payloads/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/payloads/link.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/payloads/sensor.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/protocol.yaml",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/registry.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/protocol/types.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/sdk/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/sdk/uart/__init__.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/sdk/uart/config.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/sdk/uart/transport.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/sdk/uart/uart.yaml",
+      "kind": "generated"
+    }
+  ]
+}

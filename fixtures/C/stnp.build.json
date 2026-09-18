@@ -1,0 +1,288 @@
+{
+  "format": "stnp-build",
+  "build_schema_version": "stnp-build-schema-alpha",
+  "target": "c",
+  "c": {
+    "build_system": "mdk_arm",
+    "emit_examples": true
+  },
+  "output_stem": "regression_c",
+  "emit_readme": true,
+  "layout": {
+    "output_dir_names": {
+      "c": "STNP_C",
+      "python": "STNP_Python"
+    }
+  },
+  "sdks": [],
+  "validations": [
+    {
+      "id": "E1001",
+      "level": "error"
+    },
+    {
+      "id": "E1002",
+      "level": "error"
+    },
+    {
+      "id": "E1003",
+      "level": "error"
+    },
+    {
+      "id": "E1004",
+      "level": "error"
+    },
+    {
+      "id": "E1005",
+      "level": "error"
+    },
+    {
+      "id": "E1051",
+      "level": "error"
+    },
+    {
+      "id": "E1052",
+      "level": "error"
+    },
+    {
+      "id": "E1053",
+      "level": "error"
+    },
+    {
+      "id": "E1054",
+      "level": "error"
+    },
+    {
+      "id": "E1055",
+      "level": "error"
+    },
+    {
+      "id": "E1056",
+      "level": "error"
+    },
+    {
+      "id": "E1057",
+      "level": "error"
+    },
+    {
+      "id": "E1058",
+      "level": "error"
+    },
+    {
+      "id": "E2101",
+      "level": "error"
+    },
+    {
+      "id": "E2102",
+      "level": "error"
+    },
+    {
+      "id": "E2103",
+      "level": "error"
+    },
+    {
+      "id": "E2104",
+      "level": "error"
+    },
+    {
+      "id": "E2105",
+      "level": "error"
+    },
+    {
+      "id": "E2106",
+      "level": "error"
+    },
+    {
+      "id": "E2107",
+      "level": "error"
+    },
+    {
+      "id": "E2108",
+      "level": "error"
+    },
+    {
+      "id": "E2109",
+      "level": "error"
+    },
+    {
+      "id": "E2110",
+      "level": "error"
+    },
+    {
+      "id": "E2111",
+      "level": "error"
+    },
+    {
+      "id": "E2112",
+      "level": "error"
+    },
+    {
+      "id": "E2113",
+      "level": "error"
+    },
+    {
+      "id": "E2114",
+      "level": "error"
+    },
+    {
+      "id": "E2115",
+      "level": "error"
+    },
+    {
+      "id": "E2116",
+      "level": "error"
+    },
+    {
+      "id": "E2117",
+      "level": "error"
+    },
+    {
+      "id": "E2118",
+      "level": "error"
+    },
+    {
+      "id": "E2119",
+      "level": "error"
+    },
+    {
+      "id": "E2120",
+      "level": "error"
+    },
+    {
+      "id": "E2121",
+      "level": "error"
+    },
+    {
+      "id": "E2122",
+      "level": "error"
+    },
+    {
+      "id": "E2123",
+      "level": "error"
+    },
+    {
+      "id": "E2124",
+      "level": "error"
+    },
+    {
+      "id": "E2125",
+      "level": "error"
+    },
+    {
+      "id": "E2126",
+      "level": "error"
+    },
+    {
+      "id": "E2127",
+      "level": "error"
+    },
+    {
+      "id": "E2128",
+      "level": "error"
+    },
+    {
+      "id": "E2129",
+      "level": "error"
+    },
+    {
+      "id": "E2130",
+      "level": "error"
+    },
+    {
+      "id": "E2131",
+      "level": "error"
+    },
+    {
+      "id": "E2132",
+      "level": "error"
+    },
+    {
+      "id": "E2133",
+      "level": "error"
+    },
+    {
+      "id": "E2134",
+      "level": "error"
+    },
+    {
+      "id": "E2135",
+      "level": "error"
+    },
+    {
+      "id": "E3001",
+      "level": "error"
+    },
+    {
+      "id": "E3002",
+      "level": "error"
+    },
+    {
+      "id": "E3003",
+      "level": "error"
+    },
+    {
+      "id": "E3004",
+      "level": "error"
+    },
+    {
+      "id": "E3005",
+      "level": "error"
+    },
+    {
+      "id": "E3006",
+      "level": "error"
+    },
+    {
+      "id": "E3007",
+      "level": "error"
+    },
+    {
+      "id": "E4001",
+      "level": "error"
+    },
+    {
+      "id": "E4002",
+      "level": "error"
+    },
+    {
+      "id": "E4003",
+      "level": "error"
+    },
+    {
+      "id": "E4004",
+      "level": "error"
+    },
+    {
+      "id": "E4005",
+      "level": "error"
+    },
+    {
+      "id": "E4006",
+      "level": "error"
+    },
+    {
+      "id": "E4007",
+      "level": "error"
+    },
+    {
+      "id": "E4008",
+      "level": "error"
+    },
+    {
+      "id": "E4009",
+      "level": "error"
+    },
+    {
+      "id": "E4010",
+      "level": "error"
+    },
+    {
+      "id": "E4011",
+      "level": "error"
+    },
+    {
+      "id": "E4012",
+      "level": "error"
+    }
+  ]
+}

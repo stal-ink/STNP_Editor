@@ -1,0 +1,15 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+{% for cmd in m.commands %}{% if cmd.fields %}@dataclass(frozen=True, slots=True)
+class {{ cmd.pascal }}Payload:
+{% for f in cmd.fields %}    {{ f.name }}: int
+{% endfor %}
+
+{% endif %}{% endfor %}{% for n in m.notifications %}{% if n.fields %}@dataclass(frozen=True, slots=True)
+class {{ n.pascal }}NotifyPayload:
+{% for f in n.fields %}    {{ f.name }}: int
+{% endfor %}
+
+{% endif %}{% endfor %}

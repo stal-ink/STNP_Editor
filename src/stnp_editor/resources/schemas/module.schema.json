@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stnp.local/schemas/module.schema.json",
+  "title": "STNP Module",
+  "type": "object",
+  "required": [
+    "name",
+    "return_codes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "auto_notify_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "return_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "value": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "brief": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "code",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "code": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "payload": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "type"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "max": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "doc": {
+            "type": "object",
+            "properties": {
+              "brief": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          },
+          "validate_hook": {
+            "type": "boolean",
+            "default": false
+          },
+          "notify_on_done": {
+            "$ref": "#/$defs/notify_ref"
+          },
+          "notify_on_accept": {
+            "$ref": "#/$defs/notify_ref"
+          },
+          "notify_on_reject": {
+            "$ref": "#/$defs/notify_ref"
+          }
+        }
+      }
+    },
+    "notifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "code",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "code": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "brief": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "type"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "max": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "notify_ref": {
+      "type": "object",
+      "required": [
+        "notify"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "notify": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

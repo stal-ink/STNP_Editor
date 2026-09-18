@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stnp.local/schemas/common_types.schema.json",
+  "title": "STNP common types",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+          "kind": { "type": "string", "enum": ["alias", "enum"] },
+          "type": { "type": "string", "enum": ["u8", "u16", "u32", "i32"] },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+                "value": { "type": "integer" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

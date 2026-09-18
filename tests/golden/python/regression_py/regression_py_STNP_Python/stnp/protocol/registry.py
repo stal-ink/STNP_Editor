@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .instances import INSTANCES
+from .modules import *
+
+
+@dataclass(frozen=True, slots=True)
+class ProtocolRegistry:
+    modules: dict
+    instances: dict
+    instances_by_id: dict
+
+
+MODULES = {
+    'LINK': Link,
+    'SENSOR': Sensor,
+}
+
+REGISTRY = ProtocolRegistry(
+    modules=MODULES,
+    instances=INSTANCES,
+    instances_by_id={item.id: item for item in INSTANCES.values()},
+)

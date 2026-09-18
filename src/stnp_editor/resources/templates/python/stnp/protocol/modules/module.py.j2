@@ -1,0 +1,62 @@
+from enum import IntEnum
+
+from stnp.core import CommandDescriptor, FieldSpec, ModuleDefinition, NotificationDescriptor
+{% if (m.commands | selectattr('fields') | list) or (m.notifications | selectattr('fields') | list) %}from ..payloads.{{ m.snake }} import (
+{% for cmd in m.commands %}{% if cmd.fields %}    {{ cmd.pascal }}Payload,
+{% endif %}{% endfor %}{% for n in m.notifications %}{% if n.fields %}    {{ n.pascal }}NotifyPayload,
+{% endif %}{% endfor %})
+{% endif %}
+
+class {{ m.pascal }}Result(IntEnum):
+{% for rc in m.return_codes %}    {{ rc.name }} = {{ rc.value }}
+{% endfor %}
+
+_commands = [
+{% for cmd in m.commands %}    CommandDescriptor(
+        name={{ cmd.name | repr }}, code={{ cmd.code }},
+        fields=({% for f in cmd.fields %}FieldSpec({{ f.name | repr }}, {{ f.type_name | repr }}, {{ f.min_value | repr }}, {{ f.max_value | repr }}),{% endfor %}),
+        payload_type={{ (cmd.pascal ~ 'Payload') if cmd.fields else 'None' }},
+        validate_hook={{ cmd.validate_hook }},
+        notify_on_done={{ cmd.notify_on_done.code if cmd.notify_on_done else 'None' }},
+        notify_on_accept={{ cmd.notify_on_accept.code if cmd.notify_on_accept else 'None' }},
+        notify_on_reject={{ cmd.notify_on_reject.code if cmd.notify_on_reject else 'None' }},
+    ),
+{% endfor %}]
+
+_notifications = [
+{% for n in m.notifications %}    NotificationDescriptor(
+        name={{ n.name | repr }}, code={{ n.code }},
+        fields=({% for f in n.fields %}FieldSpec({{ f.name | repr }}, {{ f.type_name | repr }}, {{ f.min_value | repr }}, {{ f.max_value | repr }}),{% endfor %}),
+        payload_type={{ (n.pascal ~ 'NotifyPayload') if n.fields else 'None' }},
+    ),
+{% endfor %}]
+
+{% set rejected = m.return_codes | selectattr('name', 'equalto', 'REJECTED') | list %}
+{% if not rejected %}{% set rejected = m.return_codes | selectattr('name', 'equalto', 'REJECT') | list %}{% endif %}
+{% if not rejected %}{% set rejected = m.return_codes | rejectattr('name', 'equalto', 'OK') | list %}{% endif %}
+{% set reject_name = rejected[0].name if rejected else 'OK' %}
+
+def validate_{{ m.snake }}(instance, code, payload):
+    """Generated per-module validator, dispatched by command code.
+
+    User validators registered with @{{ m.pascal }}.cmd.<COMMAND>.validate override this function.
+    """
+{% for cmd in m.commands %}{% if cmd.validate_hook %}    if code == {{ cmd.code }}:
+{% for f in cmd.fields %}{% if f.needs_min_check and f.needs_max_check %}        if not ({{ f.min_value }} <= payload.{{ f.name }} <= {{ f.max_value }}):
+            return {{ m.pascal }}Result.{{ reject_name }}
+{% elif f.needs_min_check %}        if payload.{{ f.name }} < {{ f.min_value }}:
+            return {{ m.pascal }}Result.{{ reject_name }}
+{% elif f.needs_max_check %}        if payload.{{ f.name }} > {{ f.max_value }}:
+            return {{ m.pascal }}Result.{{ reject_name }}
+{% endif %}{% endfor %}        return {{ m.pascal }}Result.OK
+{% endif %}{% endfor %}    return {{ m.pascal }}Result.OK
+
+
+{{ m.pascal }} = ModuleDefinition(
+    name={{ m.name | repr }},
+    results={{ m.pascal }}Result,
+    commands=_commands,
+    notifications=_notifications,
+    auto_notify_enabled={{ m.auto_notify_enabled }},
+    validator=validate_{{ m.snake }},
+)

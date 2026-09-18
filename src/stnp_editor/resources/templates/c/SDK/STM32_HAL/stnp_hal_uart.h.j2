@@ -1,0 +1,53 @@
+/**
+ ******************************************************************************
+ * @file    stnp_hal_uart.h
+ * @brief   Official STNP adapter for STM32 HAL UART.
+ *
+ * Bare metal: call STNP_HAL_UART_Init(), then STNP_Process()/STNP_Dispatch()
+ * from the application scheduler/main loop.
+ *{% if "freertos" in ir.sdks %}
+ * FreeRTOS selected: STNP_HAL_UART_Init() also starts the official protocol
+ * task + worker pool; application code does not call Process/Dispatch.
+ *{% endif %}
+ ******************************************************************************
+ */
+
+#ifndef __STNP_HAL_UART_H
+#define __STNP_HAL_UART_H
+
+#ifndef STNP_HAL_UART_HAL_HEADER
+#define STNP_HAL_UART_HAL_HEADER "main.h"
+#endif
+#include STNP_HAL_UART_HAL_HEADER
+
+#include "../../Instance/stnp_instances.h"
+
+#ifndef STNP_HAL_UART_RX_BUFFER_SIZE
+#define STNP_HAL_UART_RX_BUFFER_SIZE 256U
+#endif
+
+#ifndef STNP_HAL_UART_TX_QUEUE_DEPTH
+#define STNP_HAL_UART_TX_QUEUE_DEPTH 4U
+#endif
+
+#if (STNP_HAL_UART_TX_QUEUE_DEPTH == 0U) || (STNP_HAL_UART_TX_QUEUE_DEPTH > 255U)
+#error "STNP_HAL_UART_TX_QUEUE_DEPTH must be in range 1..255"
+#endif
+
+#ifndef STNP_HAL_UART_USE_GLOBAL_CALLBACKS
+#ifdef STNP_HAL_UART_USE_GLOBAL_RX_CALLBACK
+#define STNP_HAL_UART_USE_GLOBAL_CALLBACKS STNP_HAL_UART_USE_GLOBAL_RX_CALLBACK
+#else
+#define STNP_HAL_UART_USE_GLOBAL_CALLBACKS 1
+#endif
+#endif
+
+STNP_Result STNP_HAL_UART_Init(UART_HandleTypeDef *huart);
+void STNP_HAL_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size);
+void STNP_HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
+void STNP_HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);
+
+/** Last result returned by the Core RX ring from the HAL IRQ path. */
+STNP_Result STNP_HAL_UART_GetRxStatus(void);
+
+#endif /* __STNP_HAL_UART_H */

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stnp-editor"
+dynamic = ["version"]
+description = "STNP typed protocol IDL and C/Python code generator"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "stal-ink", email = "stal-ink@users.noreply.github.com" },
+]
+dependencies = [
+  "jinja2>=3.1,<4",
+  "jsonschema>=4.20,<5",
+]
+
+[project.urls]
+Homepage = "https://github.com/stal-ink/STNP_Editor"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<10"]
+
+[project.scripts]
+stnpe = "stnp_editor.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "stnp_editor.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+stnp_editor = [
+  "resources/config.json",
+  "resources/schemas/*.json",
+  "resources/templates/**/*.j2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-rs"

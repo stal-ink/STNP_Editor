@@ -1,0 +1,55 @@
+/**
+ ******************************************************************************
+ * @file    stnp_freertos.h
+ * @brief   Official STNP deferred-processing adapter for FreeRTOS.
+ *
+ * The adapter owns protocol/worker tasks only. STNP Core stays OS-independent.
+ * User Task/Notify APIs and generated Handler signatures do not change.
+ ******************************************************************************
+ */
+
+#ifndef __STNP_FREERTOS_H
+#define __STNP_FREERTOS_H
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "../../Instance/stnp_instances.h"
+
+#ifndef STNP_FREERTOS_WORKER_COUNT
+#define STNP_FREERTOS_WORKER_COUNT 4U
+#endif
+
+#ifndef STNP_FREERTOS_PROTOCOL_STACK_WORDS
+#define STNP_FREERTOS_PROTOCOL_STACK_WORDS 256U
+#endif
+
+#ifndef STNP_FREERTOS_WORKER_STACK_WORDS
+#define STNP_FREERTOS_WORKER_STACK_WORDS 256U
+#endif
+
+#ifndef STNP_FREERTOS_PROTOCOL_PRIORITY
+#define STNP_FREERTOS_PROTOCOL_PRIORITY (tskIDLE_PRIORITY + 2U)
+#endif
+
+#ifndef STNP_FREERTOS_WORKER_PRIORITY
+#define STNP_FREERTOS_WORKER_PRIORITY (tskIDLE_PRIORITY + 1U)
+#endif
+
+#if (STNP_FREERTOS_WORKER_COUNT == 0U) || (STNP_FREERTOS_WORKER_COUNT > 16U)
+#error "STNP_FREERTOS_WORKER_COUNT must be in range 1..16"
+#endif
+
+#if (configSUPPORT_STATIC_ALLOCATION != 1)
+#error "STNP FreeRTOS SDK requires configSUPPORT_STATIC_ALLOCATION == 1"
+#endif
+
+/** Start protocol task and worker pool. Idempotent. */
+STNP_Result STNP_FreeRTOS_Start(void);
+
+/** Internal bridge for an ISR transport adapter after RX bytes were accepted. */
+void STNP_FreeRTOS_NotifyRxFromISR(void);
+
+/** Task-context bridge for custom transports that feed STNP outside an ISR. */
+void STNP_FreeRTOS_NotifyRx(void);
+
+#endif /* __STNP_FREERTOS_H */

@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "Core/stnp.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_codec.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_codec.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_core.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_core.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_frame.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_frame.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_notify.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_notify.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_router.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_router.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_runtime.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_runtime.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_task.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_task.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_vtl.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Core/stnp_vtl.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Embedded/docs/note.md",
+      "kind": "embedded"
+    },
+    {
+      "path": "Examples/main.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Examples/transport_mock.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Examples/transport_mock.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Implementation/chassis_impl.c",
+      "kind": "implementation"
+    },
+    {
+      "path": "Implementation/motor_impl.c",
+      "kind": "implementation"
+    },
+    {
+      "path": "Implementation/sensor_impl.c",
+      "kind": "implementation"
+    },
+    {
+      "path": "Implementation/stnp_notify_callback.c",
+      "kind": "implementation"
+    },
+    {
+      "path": "Instance/stnp_instances.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Instance/stnp_instances.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/Chassis/chassis.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/Chassis/chassis.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/Motor/motor.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/Motor/motor.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/Sensor/sensor.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/Sensor/sensor.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/stnp_module.c",
+      "kind": "generated"
+    },
+    {
+      "path": "Module/stnp_module.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Platform/stnp_platform.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Platform/stnp_platform_config.h",
+      "kind": "generated"
+    },
+    {
+      "path": "Platform/stnp_types.h",
+      "kind": "generated"
+    },
+    {
+      "path": "README.md",
+      "kind": "generated"
+    }
+  ]
+}

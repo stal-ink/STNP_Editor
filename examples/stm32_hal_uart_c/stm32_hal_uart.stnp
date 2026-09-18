@@ -1,0 +1,317 @@
+{
+  "format": "stnp",
+  "schema_version": "stnp-schema-alpha",
+  "project_name": "stm32_hal_uart",
+  "protocol": {
+    "name": "STNP",
+    "version": "2.3",
+    "byte_order": "little",
+    "max_payload": 64,
+    "router_instance_max": 8,
+    "task": {
+      "sof": [
+        170,
+        85
+      ],
+      "seq": {
+        "type": "u16",
+        "start": 1,
+        "reserved": [
+          0
+        ]
+      }
+    },
+    "notify": {
+      "sof": [
+        170,
+        51
+      ]
+    },
+    "features": {
+      "crc": {
+        "enabled": false
+      }
+    },
+    "options": {
+      "notify_dispatch_receive": {
+        "enabled": true
+      }
+    }
+  },
+  "common_types": {
+    "types": [
+      {
+        "name": "Speed",
+        "kind": "alias",
+        "type": "u8"
+      }
+    ]
+  },
+  "global_results": [
+    {
+      "name": "OK",
+      "value": 0,
+      "brief": "工程级成功"
+    }
+  ],
+  "modules": [
+    {
+      "enabled": true,
+      "name": "CHASSIS",
+      "return_codes": [
+        {
+          "name": "OK",
+          "value": 256,
+          "brief": "成功"
+        },
+        {
+          "name": "PARAM",
+          "value": 257,
+          "brief": "参数错误"
+        },
+        {
+          "name": "BUSY",
+          "value": 258,
+          "brief": "忙"
+        }
+      ],
+      "commands": [
+        {
+          "name": "MOVE",
+          "code": 1,
+          "doc": {
+            "brief": "底盘按方向与速度运动",
+            "detail": "解析 DIR+SPEED 后调用用户 Move 钩子。"
+          },
+          "validate_hook": true,
+          "notify_on_done": {
+            "notify": "DONE"
+          },
+          "notify_on_accept": {
+            "notify": "TASK_ACCEPTED"
+          },
+          "notify_on_reject": {
+            "notify": "TASK_REJECTED"
+          },
+          "payload": [
+            {
+              "name": "direction",
+              "type": "u8"
+            },
+            {
+              "name": "speed",
+              "type": "Speed",
+              "min": 1,
+              "max": 100
+            }
+          ]
+        },
+        {
+          "name": "STOP",
+          "code": 2,
+          "doc": {
+            "brief": "底盘停止"
+          },
+          "validate_hook": false,
+          "notify_on_done": {
+            "notify": "DONE"
+          },
+          "payload": []
+        }
+      ],
+      "notifications": [
+        {
+          "name": "DONE",
+          "code": 1,
+          "brief": "动作完成",
+          "payload": []
+        },
+        {
+          "name": "TASK_ACCEPTED",
+          "code": 2,
+          "brief": "Task 已接受",
+          "payload": []
+        },
+        {
+          "name": "TASK_REJECTED",
+          "code": 3,
+          "brief": "Task 被拒绝",
+          "payload": []
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "MOTOR",
+      "return_codes": [
+        {
+          "name": "OK",
+          "value": 512,
+          "brief": "成功"
+        },
+        {
+          "name": "FAULT",
+          "value": 513,
+          "brief": "故障"
+        }
+      ],
+      "commands": [
+        {
+          "name": "SET_SPEED",
+          "code": 3,
+          "doc": {
+            "brief": "设置电机目标转速与加速度",
+            "detail": "字段 min/max 仅作元数据；需要范围检查时由用户绑定 Validator。"
+          },
+          "validate_hook": true,
+          "notify_on_done": {
+            "notify": "DONE"
+          },
+          "payload": [
+            {
+              "name": "speed",
+              "type": "u16",
+              "min": 0,
+              "max": 3000
+            },
+            {
+              "name": "accel",
+              "type": "u8",
+              "min": 0,
+              "max": 10
+            }
+          ]
+        },
+        {
+          "name": "HOLD",
+          "code": 4,
+          "doc": {
+            "brief": "以给定力矩锁定电机"
+          },
+          "validate_hook": false,
+          "notify_on_done": {
+            "notify": "DONE"
+          },
+          "payload": [
+            {
+              "name": "torque",
+              "type": "u16",
+              "min": 0,
+              "max": 1000
+            }
+          ]
+        }
+      ],
+      "notifications": [
+        {
+          "name": "DONE",
+          "code": 1,
+          "brief": "动作完成",
+          "payload": []
+        },
+        {
+          "name": "FAULT",
+          "code": 2,
+          "brief": "电机故障",
+          "payload": []
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "SENSOR",
+      "return_codes": [
+        {
+          "name": "OK",
+          "value": 768,
+          "brief": "成功"
+        }
+      ],
+      "commands": [
+        {
+          "name": "READ",
+          "code": 5,
+          "doc": {
+            "brief": "读取传感器当前值",
+            "detail": "结果通过 DATA 通知回传。"
+          },
+          "validate_hook": false,
+          "notify_on_done": {
+            "notify": "DATA"
+          },
+          "payload": []
+        },
+        {
+          "name": "CALIBRATE",
+          "code": 6,
+          "doc": {
+            "brief": "写入标定参数"
+          },
+          "validate_hook": true,
+          "notify_on_done": {
+            "notify": "DONE"
+          },
+          "payload": [
+            {
+              "name": "offset",
+              "type": "i32"
+            },
+            {
+              "name": "gain",
+              "type": "u16",
+              "min": 1,
+              "max": 100
+            }
+          ]
+        }
+      ],
+      "notifications": [
+        {
+          "name": "DATA",
+          "code": 1,
+          "brief": "采样数据",
+          "payload": [
+            {
+              "name": "value",
+              "type": "u16"
+            }
+          ]
+        },
+        {
+          "name": "DONE",
+          "code": 2,
+          "brief": "标定完成",
+          "payload": []
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "name": "ChassisMain",
+      "module": "CHASSIS",
+      "id": 1
+    },
+    {
+      "name": "MotorMain",
+      "module": "MOTOR",
+      "id": 2
+    },
+    {
+      "name": "SensorFront",
+      "module": "SENSOR",
+      "id": 3
+    },
+    {
+      "name": "SensorRear",
+      "module": "SENSOR",
+      "id": 4
+    }
+  ],
+  "embedded_files": {
+    "docs/note.md": {
+      "content": "stm32_hal_uart extra file from embedded_files\n",
+      "encoding": "text"
+    }
+  }
+}

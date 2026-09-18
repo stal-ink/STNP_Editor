@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stnp.local/schemas/protocol.schema.json",
+  "title": "STNP Protocol",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "byte_order",
+    "max_payload",
+    "task",
+    "notify"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "byte_order": {
+      "type": "string",
+      "const": "little"
+    },
+    "max_payload": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255
+    },
+    "router_instance_max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255,
+      "default": 8
+    },
+    "task": {
+      "type": "object",
+      "required": [
+        "sof",
+        "seq"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sof": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "seq": {
+          "type": "object",
+          "required": [
+            "type",
+            "start"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "u16"
+            },
+            "start": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "reserved": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "notify": {
+      "type": "object",
+      "required": [
+        "sof"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sof": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "crc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "seq": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "notify_dispatch_receive": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

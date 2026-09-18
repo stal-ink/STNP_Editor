@@ -1,0 +1,34 @@
+# STNP Editor —— 仓库存储形态（最小化、保守）
+#
+# 为什么加：
+#   - 本仓库需跨平台克隆/构建，且 tests/golden/** 与 examples/** 走【字节级比对】。
+#     若不固定「仓库存储形态」的行尾，同一逻辑文件在不同平台/不同 core.autocrlf
+#     下会以不同字节入库，导致 golden 与模板出现假差异。
+#
+# 为什么【不】强制 eol=lf 取出：
+#   - 本机现有 core.autocrlf=true，工作树按 CRLF 取出。若在此处强制 eol=lf，
+#     首次克隆会产生一次全仓行尾改写（大面积意外差异），风险大于收益。
+#   - 因此这里只做「存储归一化」（text）：仓库内统一 LF，取出仍遵循现有平台设置。
+#
+# 为什么这样就够：
+#   - tests/golden/** 的比对逻辑本身会把 \r\n 归一化为 \n
+#     （见 src/stnp_editor/cli.py 的 _diff_trees：read_text().replace("\r\n", "\n")），
+#     故只需保证「仓库存储」行尾确定，无需干预取出。
+#
+# 说明：基线 `* text=auto` 由 git 自动判定文本/二进制；下面仅对明确需要 LF 存储
+# 的文本类型显式声明为 text。刻意不使用 -text / eol=crlf 等会改变工作树取出的规则。
+
+* text=auto
+
+*.py text
+*.j2 text
+*.c text
+*.h text
+*.json text
+*.md text
+*.stnp text
+*.ps1 text
+*.yml text
+*.yaml text
+*.toml text
+*.xml text

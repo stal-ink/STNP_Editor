@@ -1,0 +1,288 @@
+/**
+ ******************************************************************************
+ * @file    stnp_hal_uart.c
+ * @brief   Official high-frequency STM32 HAL UART transport for STNP.
+ *
+ * RX IRQ work is bounded to re-arm + copy into STNP's RX ring. No protocol
+ * parser, generated Handler or Notify callback runs from this interrupt path.
+ * TX remains HAL_UART_Transmit_IT() + fixed static FIFO.
+ ******************************************************************************
+ */
+
+#include "stnp_hal_uart.h"
+#include "../../Core/stnp_runtime.h"
+{% if "freertos" in ir.sdks %}#include "../FreeRTOS/stnp_freertos.h"
+{% endif %}
+
+typedef struct
+{
+    STNP_U16 length;
+    STNP_U8 data[STNP_FRAME_MAX_SIZE];
+} STNP_HAL_UART_TxFrame;
+
+static UART_HandleTypeDef *g_stnp_hal_uart = STNP_NULL;
+static STNP_U8 g_stnp_hal_uart_rx[2][STNP_HAL_UART_RX_BUFFER_SIZE];
+static volatile STNP_U8 g_stnp_hal_uart_rx_active = 0U;
+static STNP_HAL_UART_TxFrame g_stnp_hal_uart_tx_queue[STNP_HAL_UART_TX_QUEUE_DEPTH];
+static volatile STNP_U8 g_stnp_hal_uart_tx_head = 0U;
+static volatile STNP_U8 g_stnp_hal_uart_tx_tail = 0U;
+static volatile STNP_U8 g_stnp_hal_uart_tx_count = 0U;
+static volatile STNP_U8 g_stnp_hal_uart_tx_busy = 0U;
+static volatile STNP_Result g_stnp_hal_uart_rx_status = STNP_OK;
+
+static uint32_t STNP_HAL_UART_Lock(void)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    return primask;
+}
+
+static void STNP_HAL_UART_Unlock(uint32_t primask)
+{
+    if (primask == 0U)
+    {
+        __enable_irq();
+    }
+}
+
+/* Strong runtime lock for the official HAL build. It is valid from both normal
+ * Cortex-M task/main context and IRQ context, so Task sequence allocation and
+ * multi-worker Job claiming share one short, platform-correct primitive. */
+STNP_U32 STNP_Runtime_Lock(void)
+{
+    return (STNP_U32)STNP_HAL_UART_Lock();
+}
+
+void STNP_Runtime_Unlock(STNP_U32 state)
+{
+    STNP_HAL_UART_Unlock((uint32_t)state);
+}
+
+static STNP_Result STNP_HAL_UART_StartReceive(void)
+{
+    if (g_stnp_hal_uart == STNP_NULL)
+    {
+        return STNP_ERR_STATE;
+    }
+    if (HAL_UARTEx_ReceiveToIdle_IT(
+            g_stnp_hal_uart,
+            (uint8_t *)g_stnp_hal_uart_rx[g_stnp_hal_uart_rx_active],
+            (uint16_t)sizeof(g_stnp_hal_uart_rx[0])) != HAL_OK)
+    {
+        return STNP_ERR_STATE;
+    }
+    return STNP_OK;
+}
+
+static STNP_Result STNP_HAL_UART_StartTxLocked(void)
+{
+    STNP_HAL_UART_TxFrame *frame;
+
+    if ((g_stnp_hal_uart_tx_busy != 0U) || (g_stnp_hal_uart_tx_count == 0U))
+    {
+        return STNP_OK;
+    }
+
+    frame = &g_stnp_hal_uart_tx_queue[g_stnp_hal_uart_tx_head];
+    g_stnp_hal_uart_tx_busy = 1U;
+    if (HAL_UART_Transmit_IT(
+            g_stnp_hal_uart,
+            (uint8_t *)frame->data,
+            (uint16_t)frame->length) != HAL_OK)
+    {
+        g_stnp_hal_uart_tx_busy = 0U;
+        return STNP_ERR_STATE;
+    }
+    return STNP_OK;
+}
+
+static STNP_Result STNP_HAL_UART_Write(const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_HAL_UART_TxFrame *frame;
+    STNP_Result result;
+    uint32_t primask;
+    STNP_U16 i;
+    STNP_U8 old_tail;
+    STNP_U8 old_count;
+
+    if ((data == STNP_NULL) && (length > 0U))
+    {
+        return STNP_ERR_PARAM;
+    }
+    if (g_stnp_hal_uart == STNP_NULL)
+    {
+        return STNP_ERR_STATE;
+    }
+    if (length > (STNP_U16)sizeof(g_stnp_hal_uart_tx_queue[0].data))
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    primask = STNP_HAL_UART_Lock();
+    if (g_stnp_hal_uart_tx_count >= (STNP_U8)STNP_HAL_UART_TX_QUEUE_DEPTH)
+    {
+        STNP_HAL_UART_Unlock(primask);
+        return STNP_ERR_BUFFER;
+    }
+
+    old_tail = g_stnp_hal_uart_tx_tail;
+    old_count = g_stnp_hal_uart_tx_count;
+    frame = &g_stnp_hal_uart_tx_queue[g_stnp_hal_uart_tx_tail];
+    frame->length = length;
+    for (i = 0U; i < length; i++)
+    {
+        frame->data[i] = data[i];
+    }
+
+    g_stnp_hal_uart_tx_tail = (STNP_U8)(
+        (g_stnp_hal_uart_tx_tail + 1U) % (STNP_U8)STNP_HAL_UART_TX_QUEUE_DEPTH
+    );
+    g_stnp_hal_uart_tx_count++;
+
+    result = STNP_HAL_UART_StartTxLocked();
+    if (result != STNP_OK)
+    {
+        g_stnp_hal_uart_tx_tail = old_tail;
+        g_stnp_hal_uart_tx_count = old_count;
+    }
+    STNP_HAL_UART_Unlock(primask);
+    return result;
+}
+
+STNP_Result STNP_HAL_UART_Init(UART_HandleTypeDef *huart)
+{
+    STNP_Result result;
+    uint32_t primask;
+
+    if (huart == STNP_NULL)
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    g_stnp_hal_uart = huart;
+    g_stnp_hal_uart_rx_status = STNP_OK;
+    g_stnp_hal_uart_rx_active = 0U;
+
+    primask = STNP_HAL_UART_Lock();
+    g_stnp_hal_uart_tx_head = 0U;
+    g_stnp_hal_uart_tx_tail = 0U;
+    g_stnp_hal_uart_tx_count = 0U;
+    g_stnp_hal_uart_tx_busy = 0U;
+    STNP_HAL_UART_Unlock(primask);
+
+    result = STNP_Init(STNP_HAL_UART_Write);
+    if (result != STNP_OK)
+    {
+        return result;
+    }
+    result = STNP_Instances_Init();
+    if (result != STNP_OK)
+    {
+        return result;
+    }
+    result = STNP_HAL_UART_StartReceive();
+    if (result != STNP_OK)
+    {
+        return result;
+    }
+{% if "freertos" in ir.sdks %}
+    return STNP_FreeRTOS_Start();
+{% else %}
+    return STNP_OK;
+{% endif %}
+}
+
+void STNP_HAL_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
+{
+    STNP_U16 copy_len;
+    STNP_U8 completed;
+    STNP_Result rearm_result;
+    STNP_Result receive_result = STNP_OK;
+
+    if (huart != g_stnp_hal_uart)
+    {
+        return;
+    }
+
+    copy_len = (STNP_U16)size;
+    if (copy_len > (STNP_U16)sizeof(g_stnp_hal_uart_rx[0]))
+    {
+        copy_len = (STNP_U16)sizeof(g_stnp_hal_uart_rx[0]);
+    }
+
+    /* Ping-pong RX: immediately arm the other hardware buffer, then copy from
+     * the completed buffer. New UART bytes can no longer overwrite the frame
+     * being committed to the Core RX ring. */
+    completed = g_stnp_hal_uart_rx_active;
+    g_stnp_hal_uart_rx_active = (STNP_U8)(completed ^ 1U);
+    rearm_result = STNP_HAL_UART_StartReceive();
+
+    if (copy_len > 0U)
+    {
+        receive_result = STNP_Transport_Receive(
+            (const STNP_U8 *)g_stnp_hal_uart_rx[completed],
+            copy_len
+        );
+{% if "freertos" in ir.sdks %}        if (receive_result == STNP_OK)
+        {
+            STNP_FreeRTOS_NotifyRxFromISR();
+        }
+{% endif %}    }
+
+    g_stnp_hal_uart_rx_status =
+        (receive_result != STNP_OK) ? receive_result : rearm_result;
+}
+
+STNP_Result STNP_HAL_UART_GetRxStatus(void)
+{
+    return g_stnp_hal_uart_rx_status;
+}
+
+void STNP_HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    uint32_t primask;
+
+    if (huart != g_stnp_hal_uart)
+    {
+        return;
+    }
+
+    primask = STNP_HAL_UART_Lock();
+    if (g_stnp_hal_uart_tx_count > 0U)
+    {
+        g_stnp_hal_uart_tx_head = (STNP_U8)(
+            (g_stnp_hal_uart_tx_head + 1U) % (STNP_U8)STNP_HAL_UART_TX_QUEUE_DEPTH
+        );
+        g_stnp_hal_uart_tx_count--;
+    }
+    g_stnp_hal_uart_tx_busy = 0U;
+    (void)STNP_HAL_UART_StartTxLocked();
+    STNP_HAL_UART_Unlock(primask);
+}
+
+void STNP_HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart != g_stnp_hal_uart)
+    {
+        return;
+    }
+    (void)HAL_UART_AbortReceive(huart);
+    (void)STNP_HAL_UART_StartReceive();
+}
+
+#if STNP_HAL_UART_USE_GLOBAL_CALLBACKS
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+    STNP_HAL_UART_RxEventCallback(huart, Size);
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    STNP_HAL_UART_TxCpltCallback(huart);
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    STNP_HAL_UART_ErrorCallback(huart);
+}
+#endif

@@ -1,0 +1,159 @@
+{
+  "format": "stnp",
+  "schema_version": "stnp-schema-alpha",
+  "project_name": "dual_multi",
+  "protocol": {
+    "name": "STNP",
+    "version": "2.3",
+    "byte_order": "little",
+    "max_payload": 32,
+    "router_instance_max": 8,
+    "task": {
+      "sof": [170, 85],
+      "seq": {
+        "type": "u16",
+        "start": 1,
+        "reserved": [0]
+      }
+    },
+    "notify": {
+      "sof": [170, 51]
+    },
+    "features": {
+      "crc": {
+        "enabled": true
+      }
+    },
+    "options": {
+      "notify_dispatch_receive": {
+        "enabled": true
+      }
+    }
+  },
+  "common_types": {
+    "types": []
+  },
+  "global_results": [
+    {
+      "name": "OK",
+      "value": 0,
+      "brief": "工程级成功"
+    }
+  ],
+  "modules": [
+    {
+      "enabled": true,
+      "name": "LED",
+      "return_codes": [
+        {"name": "OK", "value": 256, "brief": "Success"},
+        {"name": "INVALID_PARAM", "value": 257, "brief": "Invalid parameter"},
+        {"name": "BUSY", "value": 258, "brief": "Device busy"}
+      ],
+      "commands": [
+        {
+          "name": "SET",
+          "code": 1,
+          "payload": [
+            {"name": "state", "type": "u8", "min": 0, "max": 1},
+            {"name": "brightness", "type": "u8", "min": 0, "max": 100}
+          ],
+          "validate_hook": true,
+          "notify_on_done": {"notify": "STATE_CHANGED"},
+          "doc": {"brief": "Set LED state and brightness"}
+        },
+        {
+          "name": "GET",
+          "code": 2,
+          "payload": [],
+          "validate_hook": false,
+          "notify_on_done": {"notify": "STATE_CHANGED"},
+          "doc": {"brief": "Read current LED state"}
+        },
+        {
+          "name": "BLINK",
+          "code": 3,
+          "payload": [
+            {"name": "period_ms", "type": "u16", "min": 10, "max": 5000}
+          ],
+          "validate_hook": true,
+          "notify_on_done": {"notify": "STATE_CHANGED"},
+          "doc": {"brief": "Blink LED with a period"}
+        }
+      ],
+      "notifications": [
+        {
+          "name": "STATE_CHANGED",
+          "code": 1,
+          "brief": "LED state changed",
+          "payload": [
+            {"name": "state", "type": "u8"},
+            {"name": "brightness", "type": "u8"}
+          ]
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "MOTOR",
+      "return_codes": [
+        {"name": "OK", "value": 512, "brief": "Success"},
+        {"name": "OVERLOAD", "value": 513, "brief": "Motor overload"},
+        {"name": "NOT_READY", "value": 514, "brief": "Motor not ready"}
+      ],
+      "commands": [
+        {
+          "name": "MOVE",
+          "code": 1,
+          "payload": [
+            {"name": "speed", "type": "i32", "min": -3000, "max": 3000},
+            {"name": "direction", "type": "u8", "min": 0, "max": 1}
+          ],
+          "validate_hook": true,
+          "notify_on_done": {"notify": "REACHED"},
+          "doc": {"brief": "Start motor movement"}
+        },
+        {
+          "name": "STOP",
+          "code": 2,
+          "payload": [],
+          "validate_hook": false,
+          "notify_on_done": {"notify": "REACHED"},
+          "doc": {"brief": "Stop motor"}
+        },
+        {
+          "name": "SET_LIMIT",
+          "code": 3,
+          "payload": [
+            {"name": "limit", "type": "u16", "min": 0, "max": 10000}
+          ],
+          "validate_hook": true,
+          "doc": {"brief": "Set motor travel limit"}
+        }
+      ],
+      "notifications": [
+        {
+          "name": "REACHED",
+          "code": 1,
+          "brief": "Motor reached target or stopped",
+          "payload": [
+            {"name": "position", "type": "i32"}
+          ]
+        },
+        {
+          "name": "ERROR",
+          "code": 2,
+          "brief": "Motor runtime error",
+          "payload": [
+            {"name": "error_code", "type": "u8"}
+          ]
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {"name": "LedFront", "module": "LED", "id": 1},
+    {"name": "LedRear", "module": "LED", "id": 2},
+    {"name": "MotorLeft", "module": "MOTOR", "id": 16},
+    {"name": "MotorRight", "module": "MOTOR", "id": 17}
+  ]
+}

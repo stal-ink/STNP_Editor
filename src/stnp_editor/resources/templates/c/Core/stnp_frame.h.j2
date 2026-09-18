@@ -1,0 +1,71 @@
+/**
+ ******************************************************************************
+ * @file    stnp_frame.h
+ * @brief   STNP 帧结构、帧头常量与组包拆包接口。
+ *
+ * Task:   SOF[2]{% if p.seq_enabled %} | SEQ |{% endif %} TARGET | CODE | LEN | PAYLOAD
+ * Notify: SOF[2]{% if p.seq_enabled %} | SEQ |{% endif %} SOURCE | NOTIFY_CODE | RESULT | LEN | PAYLOAD
+ *
+ * {% if p.seq_enabled %}SEQ 与 {% endif %}CRC 槽由 protocol.features 门控。
+ * 用户禁止修改协议代码。
+ ******************************************************************************
+ */
+
+#ifndef __STNP_FRAME_H
+#define __STNP_FRAME_H
+
+#include "stnp_core.h"
+
+#define STNP_TASK_HEADER0     {{ p.task_sof[0] | hex2 }} /* Task帧头第1字节 */
+#define STNP_TASK_HEADER1     {{ p.task_sof[1] | hex2 }} /* Task帧头第2字节 */
+#define STNP_NOTIFY_HEADER0   {{ p.notify_sof[0] | hex2 }} /* Notify帧头第1字节 */
+#define STNP_NOTIFY_HEADER1   {{ p.notify_sof[1] | hex2 }} /* Notify帧头第2字节 */
+
+typedef struct
+{
+{% if p.seq_enabled %}    STNP_U16 seq;                         /* 序列号 */
+{% endif %}    STNP_U8  target;                      /* 目标实例 */
+    STNP_U8  code;                        /* 命令码 */
+    STNP_U8  length;                      /* Payload长度 */
+    STNP_U8  payload[STNP_PAYLOAD_MAX];   /* Payload数据 */
+} STNP_TaskFrame;
+
+typedef struct
+{
+{% if p.seq_enabled %}    STNP_U16 seq;                         /* 序列号 */
+{% endif %}    STNP_U8  source;                      /* 来源实例 */
+    STNP_U8  notify_code;                 /* 模块内通知码 */
+    STNP_U16 result;                      /* 模块返回码 */
+    STNP_U8  length;                      /* Payload长度 */
+    STNP_U8  payload[STNP_PAYLOAD_MAX];   /* Payload数据 */
+} STNP_NotifyFrame;
+
+{% if p.seq_enabled %}
+/* Task 与 Notify 共享同一发送方序号计数器：先取当前值并推进到下一非保留值，
+ * 调用方随后才写出帧（reserve-before-write）。 */
+STNP_U16 STNP_Frame_ReserveSeq(void);
+{% endif %}
+
+STNP_Result STNP_Frame_BuildTask(
+    const STNP_TaskFrame *frame,
+    STNP_U8 *out,
+    STNP_U16 out_max,
+    STNP_U16 *out_len);
+
+STNP_Result STNP_Frame_ParseTask(
+    const STNP_U8 *data,
+    STNP_U16 length,
+    STNP_TaskFrame *frame);
+
+STNP_Result STNP_Frame_BuildNotify(
+    const STNP_NotifyFrame *frame,
+    STNP_U8 *out,
+    STNP_U16 out_max,
+    STNP_U16 *out_len);
+
+STNP_Result STNP_Frame_ParseNotify(
+    const STNP_U8 *data,
+    STNP_U16 length,
+    STNP_NotifyFrame *frame);
+
+#endif /* __STNP_FRAME_H */

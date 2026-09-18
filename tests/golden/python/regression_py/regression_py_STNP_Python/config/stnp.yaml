@@ -1,0 +1,5 @@
+# User-editable Python runtime configuration.
+transport: uart
+runtime:
+  dispatch_queue: 1024
+  warn_missing_implementation: true

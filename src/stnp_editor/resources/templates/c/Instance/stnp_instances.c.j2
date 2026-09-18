@@ -1,0 +1,32 @@
+/**
+ ******************************************************************************
+ * @file    stnp_instances.c
+ * @brief   Generated instances and receive routing only.
+ ******************************************************************************
+ */
+
+#include "stnp_instances.h"
+#include "../Core/stnp_router.h"
+#include "../Core/stnp_notify.h"
+{% for inst in ir.instances %}static {{ inst.module.handle_type }} {{ inst.handle_var }};
+{% endfor %}
+STNP_Result STNP_Instances_Init(void)
+{
+    STNP_Result result;
+{% for inst in ir.instances %}    {{ inst.module.pascal }}_Init(&{{ inst.handle_var }}, STNP_INSTANCE_{{ inst.macro }}_ID);
+    result = STNP_Router_Register({{ inst.module.pascal }}_AsModule(&{{ inst.handle_var }}));
+    if (result != STNP_OK) return result;
+{% endfor %}    return STNP_OK;
+}
+STNP_Result STNP_Notify_Dispatch(STNP_U8 source, STNP_U8 notify_code, STNP_U16 result, const STNP_U8 *payload, STNP_U8 length)
+{
+    STNP_Notify_Callback(source, notify_code, result, payload, length);
+    if (STNP_NotifyDispatchReceive_IsEnabled() != 0U)
+    {
+{% for inst in ir.instances %}        if (source == STNP_INSTANCE_{{ inst.macro }}_ID)
+        {
+            return {{ inst.module.notify_dispatch_fn }}(&{{ inst.handle_var }}, notify_code, result, payload, length);
+        }
+{% endfor %}    }
+    return STNP_OK;
+}

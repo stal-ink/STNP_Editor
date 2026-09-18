@@ -1,0 +1,17 @@
+from stnp.core import ProtocolDefinition
+
+PROTOCOL = ProtocolDefinition(
+    name={{ p.name | repr }},
+    version={{ p.version | repr }},
+    max_payload={{ p.max_payload }},
+    router_instance_max={{ p.router_instance_max }},
+    task_sof=({{ p.task_sof[0] }}, {{ p.task_sof[1] }}),
+    notify_sof=({{ p.notify_sof[0] }}, {{ p.notify_sof[1] }}),
+    seq_start={{ p.seq_start }},
+    seq_reserved=({% for v in p.seq_reserved %}{{ v }},{% endfor %}),
+    crc_enabled={{ p.crc_enabled }},
+    task_fixed_size={{ p.task_fixed_size }},
+    notify_fixed_size={{ p.notify_fixed_size }},
+    seq_enabled={{ p.seq_enabled }},
+    notify_dispatch_receive={{ p.notify_dispatch_receive }},
+)

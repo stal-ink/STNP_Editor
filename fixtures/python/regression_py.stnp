@@ -1,0 +1,202 @@
+{
+  "format": "stnp",
+  "schema_version": "stnp-schema-alpha",
+  "project_name": "regression_py",
+  "protocol": {
+    "name": "STNP",
+    "version": "2.3",
+    "byte_order": "little",
+    "max_payload": 64,
+    "router_instance_max": 8,
+    "task": {
+      "sof": [
+        170,
+        85
+      ],
+      "seq": {
+        "type": "u16",
+        "start": 1,
+        "reserved": [
+          0
+        ]
+      }
+    },
+    "notify": {
+      "sof": [
+        170,
+        51
+      ]
+    },
+    "features": {
+      "crc": {
+        "enabled": true
+      }
+    },
+    "options": {
+      "notify_dispatch_receive": {
+        "enabled": true
+      }
+    }
+  },
+  "common_types": {
+    "types": []
+  },
+  "global_results": [
+    {
+      "name": "OK",
+      "value": 0,
+      "brief": "工程级成功"
+    }
+  ],
+  "modules": [
+    {
+      "enabled": true,
+      "name": "LINK",
+      "return_codes": [
+        {
+          "name": "OK",
+          "value": 256,
+          "brief": "success"
+        },
+        {
+          "name": "REJECTED",
+          "value": 257,
+          "brief": "handshake rejected"
+        }
+      ],
+      "commands": [
+        {
+          "name": "HANDSHAKE",
+          "code": 1,
+          "payload": [
+            {
+              "name": "token",
+              "type": "u16",
+              "min": 1,
+              "max": 65535
+            }
+          ],
+          "validate_hook": true,
+          "notify_on_done": {
+            "notify": "READY"
+          },
+          "notify_on_accept": {
+            "notify": "ACCEPTED"
+          },
+          "notify_on_reject": {
+            "notify": "REJECTED"
+          },
+          "doc": {
+            "brief": "Handshake with peer",
+            "detail": "Validates token and lets user send READY."
+          }
+        }
+      ],
+      "notifications": [
+        {
+          "name": "READY",
+          "code": 1,
+          "brief": "Peer ready",
+          "payload": []
+        },
+        {
+          "name": "ACCEPTED",
+          "code": 2,
+          "brief": "Handshake accepted",
+          "payload": []
+        },
+        {
+          "name": "REJECTED",
+          "code": 3,
+          "brief": "Handshake rejected",
+          "payload": []
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "SENSOR",
+      "return_codes": [
+        {
+          "name": "OK",
+          "value": 512,
+          "brief": "success"
+        },
+        {
+          "name": "BUSY",
+          "value": 513,
+          "brief": "busy"
+        }
+      ],
+      "commands": [
+        {
+          "name": "READ",
+          "code": 1,
+          "payload": [],
+          "validate_hook": false,
+          "notify_on_done": {
+            "notify": "DATA"
+          },
+          "doc": {
+            "brief": "Read sensor"
+          }
+        },
+        {
+          "name": "SET_RATE",
+          "code": 2,
+          "payload": [
+            {
+              "name": "hz",
+              "type": "u16",
+              "min": 1,
+              "max": 1000
+            }
+          ],
+          "validate_hook": true,
+          "notify_on_reject": {
+            "notify": "REJECTED"
+          },
+          "doc": {
+            "brief": "Set sample rate"
+          }
+        }
+      ],
+      "notifications": [
+        {
+          "name": "DATA",
+          "code": 1,
+          "brief": "Sensor data",
+          "payload": [
+            {
+              "name": "value",
+              "type": "u16"
+            }
+          ]
+        },
+        {
+          "name": "REJECTED",
+          "code": 2,
+          "brief": "Request rejected",
+          "payload": []
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "name": "LinkMain",
+      "module": "LINK",
+      "id": 1
+    },
+    {
+      "name": "SensorFront",
+      "module": "SENSOR",
+      "id": 2
+    },
+    {
+      "name": "SensorRear",
+      "module": "SENSOR",
+      "id": 3
+    }
+  ]
+}

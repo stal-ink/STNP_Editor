@@ -1,0 +1,27 @@
+# AUTO-GENERATED protocol configuration. Source of truth: Editor -> IR.
+# Do not use this file for UART/runtime tuning.
+protocol:
+  name: {{ p.name }}
+  version: {{ p.version | repr }}
+  max_payload: {{ p.max_payload }}
+  router_instance_max: {{ p.router_instance_max }}
+  task_sof: [{{ p.task_sof[0] }}, {{ p.task_sof[1] }}]
+  notify_sof: [{{ p.notify_sof[0] }}, {{ p.notify_sof[1] }}]
+  seq_start: {{ p.seq_start }}
+  seq_reserved: [{% for v in p.seq_reserved %}{{ v }}{% if not loop.last %}, {% endif %}{% endfor %}]
+  crc_enabled: {{ p.crc_enabled | lower }}
+  seq_enabled: {{ p.seq_enabled | lower }}
+  task_fixed_size: {{ p.task_fixed_size }}
+  notify_fixed_size: {{ p.notify_fixed_size }}
+  notify_dispatch_receive: {{ p.notify_dispatch_receive | lower }}
+modules:
+{% for m in ir.modules %}  {{ m.name }}:
+    results:
+{% for rc in m.return_codes %}      {{ rc.name }}: {{ rc.value }}
+{% endfor %}    commands:
+{% for cmd in m.commands %}      {{ cmd.name }}: {{ cmd.code }}
+{% endfor %}    notifications:
+{% for n in m.notifications %}      {{ n.name }}: {{ n.code }}
+{% endfor %}{% endfor %}instances:
+{% for i in ir.instances %}  {{ i.name }}: {module: {{ i.module.name }}, id: {{ i.id_value }}}
+{% endfor %}

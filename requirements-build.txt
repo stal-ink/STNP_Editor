@@ -1,0 +1,35 @@
+# STNP Editor —— 仅构建期依赖清单（build-time only）
+#
+# 用途：构建单文件 dist/stnpe.exe（PyInstaller onefile）。
+#
+# ⚠️ 这些是「仅构建期」依赖，不是运行时依赖：
+#   - 它们【刻意】不放进 pyproject.toml 的 [project].dependencies，
+#     也不放进 requirements.txt（那两份是给普通使用者/运行时的清单）。
+#   - 否则普通使用者也会被要求安装 PyInstaller 这一整条工具链。
+#   - 只有需要自己构建 exe 的开发者 / CI 才安装本文件。
+#
+# 安装方式：
+#   python -m pip install -r requirements-build.txt
+#
+# 说明（精确钉版，全部为 build-time，运行时依赖不变）：
+#   - 本文件对 build-time 依赖链【精确钉版】而非范围约束，理由是构建后的
+#     完整性与可复现性都依赖版本敏感的内部实现：
+#       * scripts/build_exe.ps1 的构建后完整性门用
+#         PyInstaller.archive.readers.CArchiveReader 打开产出的 exe，并以
+#         reader.toc[name][4] == "b" 判定二进制条目 —— 两者都是版本敏感的
+#         内部 API / 元组布局；升级 PyInstaller 可能让该门失效或行为改变。
+#       * 可复现性判据（条目清单：名称 + CRC32 + size）也由 PyInstaller 与
+#         pyinstaller-hooks-contrib 的版本决定 —— 版本漂移会改变打包进去的
+#         内容，使「两次构建一致」的结论失去意义。
+#     因此本仓库把构建链钉死；升级需作为一个【显式批次】做，并重跑完整验证。
+#   - pyinstaller-hooks-contrib 是 pyinstaller 的声明依赖（由 pip 自动解析）；
+#     本文件【已显式固定】其版本（原先「不显式固定」的说法已过时）：它决定
+#     打包进 exe 的 hooks / 内容，属上述可复现性判据的一部分，必须一并钉死。
+#   - pywin32-ctypes 仅 Windows 需要（环境标记 `; sys_platform == "win32"`）。
+#   - altgraph==0.17.5：0.17.4 会 `import pkg_resources`，而 setuptools 83
+#     已移除该模块；钉到已在此环境验证可用的 0.17.5。
+
+pyinstaller==6.15.0
+pyinstaller-hooks-contrib==2025.8
+pywin32-ctypes==0.2.3 ; sys_platform == "win32"
+altgraph==0.17.5

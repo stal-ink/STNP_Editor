@@ -1,0 +1,7 @@
+"""Official STNP SDK namespace."""
+
+{% if 'uart' in sdks %}from . import uart
+
+__all__ = ["uart"]
+{% else %}__all__ = []
+{% endif %}

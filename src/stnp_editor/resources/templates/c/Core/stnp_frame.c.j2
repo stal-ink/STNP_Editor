@@ -1,0 +1,320 @@
+/**
+ ******************************************************************************
+ * @file    stnp_frame.c
+ * @brief   STNP 帧解析和组包实现（SOF 由 .stnp 配置）。
+ *
+ * 用户禁止修改协议代码。
+ ******************************************************************************
+ */
+
+#include "stnp_frame.h"
+#include "stnp_codec.h"
+{% if p.crc_enabled %}
+#include "stnp_crc.h"
+{% endif %}
+{% if p.seq_enabled %}
+#include "stnp_runtime.h"
+
+/* Task 与 Notify 共享同一发送方序号计数器。 */
+static STNP_U16 g_stnp_tx_seq = {{ p.seq_start | hex4 }};
+
+static STNP_U8 _seq_is_reserved(STNP_U16 seq)
+{
+{% if p.seq_reserved %}
+    switch (seq)
+    {
+{% for value in p.seq_reserved %}
+    case {{ value | hex4 }}:
+{% endfor %}
+        return 1U;
+    default:
+        return 0U;
+    }
+{% else %}
+    STNP_UNUSED(seq);
+    return 0U;
+{% endif %}
+}
+
+static void _seq_advance(void)
+{
+    do
+    {
+        if (g_stnp_tx_seq == 0xFFFFU)
+        {
+            g_stnp_tx_seq = 0U;
+        }
+        else
+        {
+            g_stnp_tx_seq++;
+        }
+    } while (_seq_is_reserved(g_stnp_tx_seq) != 0U);
+}
+
+STNP_U16 STNP_Frame_ReserveSeq(void)
+{
+    STNP_U16 seq;
+    STNP_U32 state = STNP_Runtime_Lock();
+
+    seq = g_stnp_tx_seq;
+    _seq_advance();
+    STNP_Runtime_Unlock(state);
+    return seq;
+}
+{% endif %}
+
+static STNP_U16 _crc_extra(void)
+{
+    return STNP_CRC_SIZE;
+}
+
+{% set seq = 2 if p.seq_enabled else 0 %}
+
+{% if p.crc_enabled %}
+static STNP_Result _append_crc(STNP_U8 *out, STNP_U16 body_len)
+{
+    STNP_U16 crc;
+
+    crc = STNP_CRC16(out, body_len);
+    STNP_Encode_U16(&out[body_len], crc);
+    return STNP_OK;
+}
+
+static STNP_Result _verify_crc(const STNP_U8 *data, STNP_U16 body_len)
+{
+    STNP_U16 got;
+    STNP_U16 expect;
+
+    expect = STNP_CRC16(data, body_len);
+    got = STNP_Decode_U16(&data[body_len]);
+    if (got != expect)
+    {
+        return STNP_ERR_PARAM;
+    }
+    return STNP_OK;
+}
+{% endif %}
+
+STNP_Result STNP_Frame_BuildTask(
+    const STNP_TaskFrame *frame,
+    STNP_U8 *out,
+    STNP_U16 out_max,
+    STNP_U16 *out_len)
+{
+    STNP_U16 need;
+    STNP_U16 i;
+    STNP_U16 extra;
+
+    if ((frame == STNP_NULL) || (out == STNP_NULL) || (out_len == STNP_NULL))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    if (frame->length > STNP_PAYLOAD_MAX)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    extra = _crc_extra();
+    need = (STNP_U16)(STNP_TASK_FIXED_SIZE + frame->length + extra);
+    if (out_max < need)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    out[0] = STNP_TASK_HEADER0;
+    out[1] = STNP_TASK_HEADER1;
+{% if p.seq_enabled %}    STNP_Encode_U16(&out[2], frame->seq);
+{% endif %}    out[{{ 2 + seq }}] = frame->target;
+    out[{{ 3 + seq }}] = frame->code;
+    out[{{ 4 + seq }}] = frame->length;
+
+    for (i = 0U; i < frame->length; i++)
+    {
+        out[STNP_TASK_FIXED_SIZE + i] = frame->payload[i];
+    }
+
+{% if p.crc_enabled %}
+    if (extra != 0U)
+    {
+        (void)_append_crc(out, (STNP_U16)(STNP_TASK_FIXED_SIZE + frame->length));
+    }
+{% endif %}
+
+    *out_len = need;
+    return STNP_OK;
+}
+
+STNP_Result STNP_Frame_ParseTask(
+    const STNP_U8 *data,
+    STNP_U16 length,
+    STNP_TaskFrame *frame)
+{
+    STNP_U8 payload_len;
+    STNP_U16 i;
+    STNP_U16 extra;
+    STNP_U16 need;
+
+    if ((data == STNP_NULL) || (frame == STNP_NULL))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    if (length < STNP_TASK_FIXED_SIZE)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    if ((data[0] != STNP_TASK_HEADER0) || (data[1] != STNP_TASK_HEADER1))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    payload_len = data[{{ 4 + seq }}];
+    if (payload_len > STNP_PAYLOAD_MAX)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    extra = _crc_extra();
+    need = (STNP_U16)(STNP_TASK_FIXED_SIZE + payload_len + extra);
+    if (length != need)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+{% if p.crc_enabled %}
+    if (extra != 0U)
+    {
+        if (_verify_crc(data, (STNP_U16)(STNP_TASK_FIXED_SIZE + payload_len)) != STNP_OK)
+        {
+            return STNP_ERR_PARAM;
+        }
+    }
+{% endif %}
+
+{% if p.seq_enabled %}    frame->seq = STNP_Decode_U16(&data[2]);
+{% endif %}    frame->target = data[{{ 2 + seq }}];
+    frame->code = data[{{ 3 + seq }}];
+    frame->length = payload_len;
+
+    for (i = 0U; i < payload_len; i++)
+    {
+        frame->payload[i] = data[STNP_TASK_FIXED_SIZE + i];
+    }
+
+    return STNP_OK;
+}
+
+STNP_Result STNP_Frame_BuildNotify(
+    const STNP_NotifyFrame *frame,
+    STNP_U8 *out,
+    STNP_U16 out_max,
+    STNP_U16 *out_len)
+{
+    STNP_U16 need;
+    STNP_U16 i;
+    STNP_U16 extra;
+
+    if ((frame == STNP_NULL) || (out == STNP_NULL) || (out_len == STNP_NULL))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    if (frame->length > STNP_PAYLOAD_MAX)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    extra = _crc_extra();
+    need = (STNP_U16)(STNP_NOTIFY_FIXED_SIZE + frame->length + extra);
+    if (out_max < need)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    out[0] = STNP_NOTIFY_HEADER0;
+    out[1] = STNP_NOTIFY_HEADER1;
+{% if p.seq_enabled %}    STNP_Encode_U16(&out[2], frame->seq);
+{% endif %}    out[{{ 2 + seq }}] = frame->source;
+    out[{{ 3 + seq }}] = frame->notify_code;
+    STNP_Encode_U16(&out[{{ 4 + seq }}], frame->result);
+    out[{{ 6 + seq }}] = frame->length;
+
+    for (i = 0U; i < frame->length; i++)
+    {
+        out[STNP_NOTIFY_FIXED_SIZE + i] = frame->payload[i];
+    }
+
+{% if p.crc_enabled %}
+    if (extra != 0U)
+    {
+        (void)_append_crc(out, (STNP_U16)(STNP_NOTIFY_FIXED_SIZE + frame->length));
+    }
+{% endif %}
+
+    *out_len = need;
+    return STNP_OK;
+}
+
+STNP_Result STNP_Frame_ParseNotify(
+    const STNP_U8 *data,
+    STNP_U16 length,
+    STNP_NotifyFrame *frame)
+{
+    STNP_U8 payload_len;
+    STNP_U16 i;
+    STNP_U16 extra;
+    STNP_U16 need;
+
+    if ((data == STNP_NULL) || (frame == STNP_NULL))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    if (length < STNP_NOTIFY_FIXED_SIZE)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    if ((data[0] != STNP_NOTIFY_HEADER0) || (data[1] != STNP_NOTIFY_HEADER1))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    payload_len = data[{{ 6 + seq }}];
+    if (payload_len > STNP_PAYLOAD_MAX)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+    extra = _crc_extra();
+    need = (STNP_U16)(STNP_NOTIFY_FIXED_SIZE + payload_len + extra);
+    if (length != need)
+    {
+        return STNP_ERR_LENGTH;
+    }
+
+{% if p.crc_enabled %}
+    if (extra != 0U)
+    {
+        if (_verify_crc(data, (STNP_U16)(STNP_NOTIFY_FIXED_SIZE + payload_len)) != STNP_OK)
+        {
+            return STNP_ERR_PARAM;
+        }
+    }
+{% endif %}
+
+{% if p.seq_enabled %}    frame->seq = STNP_Decode_U16(&data[2]);
+{% endif %}    frame->source = data[{{ 2 + seq }}];
+    frame->notify_code = data[{{ 3 + seq }}];
+    frame->result = STNP_Decode_U16(&data[{{ 4 + seq }}]);
+    frame->length = payload_len;
+
+    for (i = 0U; i < payload_len; i++)
+    {
+        frame->payload[i] = data[STNP_NOTIFY_FIXED_SIZE + i];
+    }
+
+    return STNP_OK;
+}

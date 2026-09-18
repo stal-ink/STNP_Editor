@@ -1,0 +1,67 @@
+/**
+ ******************************************************************************
+ * @file    stnp_task.c
+ * @brief   STNP Task structured/raw send and receive implementation.
+ ******************************************************************************
+ */
+
+#include "stnp_task.h"
+#include "stnp_frame.h"
+#include "stnp_router.h"
+
+STNP_Result STNP_Task_Send(STNP_U8 target, STNP_U8 code, const void *payload)
+{
+    STNP_U8 raw[STNP_PAYLOAD_MAX];
+    STNP_U8 length = 0U;
+    STNP_Result result;
+
+    result = STNP_Router_EncodeTask(target, code, payload, raw, &length);
+    if (result != STNP_OK)
+    {
+        return result;
+    }
+    return STNP_Task_SendBytes_Impl(
+        target,
+        code,
+        (length == 0U) ? STNP_NULL : raw,
+        length
+    );
+}
+
+STNP_Result STNP_Task_SendBytes_Impl(
+    STNP_U8 target,
+    STNP_U8 code,
+    const STNP_U8 *payload,
+    STNP_U16 length)
+{
+    STNP_TaskFrame frame;
+    STNP_U8 out[STNP_TASK_FIXED_SIZE + STNP_PAYLOAD_MAX + STNP_CRC_SIZE];
+    STNP_U16 out_len;
+    STNP_U16 i;
+    STNP_Result result;
+
+    if (length > STNP_PAYLOAD_MAX)
+    {
+        return STNP_ERR_LENGTH;
+    }
+    if ((payload == STNP_NULL) && (length > 0U))
+    {
+        return STNP_ERR_PARAM;
+    }
+
+    frame.target = target;
+    frame.code = code;
+    frame.length = (STNP_U8)length;
+    for (i = 0U; i < length; i++)
+    {
+        frame.payload[i] = payload[i];
+    }
+
+    result = STNP_Frame_BuildTask(&frame, out, (STNP_U16)sizeof(out), &out_len);
+    if (result != STNP_OK)
+    {
+        return result;
+    }
+    result = STNP_Transport_Write(out, out_len);
+    return result;
+}

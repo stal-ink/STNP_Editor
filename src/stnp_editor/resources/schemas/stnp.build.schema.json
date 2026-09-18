@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stnp.local/schemas/stnp.build.schema.json",
+  "title": "STNP Build Configuration",
+  "type": "object",
+  "required": [
+    "format",
+    "build_schema_version",
+    "target"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "stnp-build"
+    },
+    "build_schema_version": {
+      "type": "string",
+      "const": "stnp-build-schema-alpha"
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "c",
+        "python"
+      ],
+      "x-enumLabels": {
+        "c": "C",
+        "python": "Python"
+      }
+    },
+    "c": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "build_system": {
+          "type": "string",
+          "enum": [
+            "mdk_arm",
+            "cmake"
+          ],
+          "x-enumLabels": {
+            "mdk_arm": "MDK-ARM",
+            "cmake": "CMake"
+          },
+          "default": "mdk_arm"
+        },
+        "emit_examples": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "build_system": {
+          "type": "string",
+          "const": "python",
+          "default": "python"
+        },
+        "emit_examples": {
+          "type": "boolean",
+          "default": false
+        },
+        "emit_user_scaffold": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "output_stem": {
+      "type": "string",
+      "minLength": 1
+    },
+    "emit_readme": {
+      "type": "boolean",
+      "default": true
+    },
+    "validations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "level"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "note"
+            ]
+          }
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "output_dir_names": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "c": {
+              "type": "string",
+              "minLength": 1,
+              "default": "STNP_C"
+            },
+            "python": {
+              "type": "string",
+              "minLength": 1,
+              "default": "STNP_Python"
+            }
+          }
+        }
+      }
+    },
+    "sdks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "stm32_hal_uart"
+        ],
+        "x-enumLabels": {
+          "stm32_hal_uart": "STM32 HAL UART"
+        }
+      }
+    },
+    "python_sdks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "uart"
+        ],
+        "x-enumLabels": {
+          "uart": "UART (pyserial)"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The editable install is what makes the third CLI entry point real in CI:
+      # pip places the [project.scripts] `stnpe` console script in the
+      # interpreter's Scripts directory and scripts/test.ps1 prepends that
+      # directory to PATH.  Without it, tests/test_cli_e2e.py reports an
+      # UNEXPECTED skip (console script missing) and `-FailOnSkip` exits 1.
+      # This is not skip-silencing: the stnpe-parametrized e2e cases then run.
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e ".[dev]"
+
+      - name: Set up mingw-w64 toolchain
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-make make
+          path-type: inherit
+
+      - name: Put mingw-w64 bin on the job PATH
+        shell: pwsh
+        run: |
+          $mingwBin = Join-Path "${{ steps.msys2.outputs.msys2-location }}" "mingw64\bin"
+          foreach ($tool in @("gcc.exe", "mingw32-make.exe")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $mingwBin $tool))) {
+              throw "$tool not found under $mingwBin"
+            }
+          }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $mingwBin -Encoding utf8
+
+      - name: Verify gcc, mingw32-make and cmake are visible
+        shell: pwsh
+        run: |
+          gcc --version
+          mingw32-make --version
+          cmake --version
+
+      - name: Run test suite
+        shell: pwsh
+        run: .\scripts\test.ps1 -FailOnSkip
+
+  packaging:
+    name: Packaging
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Runtime/test deps from requirements.txt; the PyInstaller toolchain comes
+      # from requirements-build.txt (single source of truth, see I-008).
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-build.txt
+
+      - name: Set up mingw-w64 toolchain
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-make make
+          path-type: inherit
+
+      - name: Put mingw-w64 bin on the job PATH
+        shell: pwsh
+        run: |
+          $mingwBin = Join-Path "${{ steps.msys2.outputs.msys2-location }}" "mingw64\bin"
+          foreach ($tool in @("gcc.exe", "mingw32-make.exe")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $mingwBin $tool))) {
+              throw "$tool not found under $mingwBin"
+            }
+          }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $mingwBin -Encoding utf8
+
+      - name: Verify gcc, mingw32-make and cmake are visible
+        shell: pwsh
+        run: |
+          gcc --version
+          mingw32-make --version
+          cmake --version
+
+      - name: Build single-file exe
+        shell: pwsh
+        run: .\scripts\build_exe.ps1
+
+      - name: Verify exe (six checks)
+        shell: pwsh
+        run: .\scripts\verify_exe.ps1
+
+      - name: Run packaging tests
+        shell: pwsh
+        run: |
+          $env:STNP_TEST_EXE = "1"
+          python -m pytest tests/test_packaging.py -q

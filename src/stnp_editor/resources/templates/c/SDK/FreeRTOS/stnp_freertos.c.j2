@@ -1,0 +1,184 @@
+/**
+ ******************************************************************************
+ * @file    stnp_freertos.c
+ * @brief   FreeRTOS protocol task + concurrent STNP worker pool.
+ ******************************************************************************
+ */
+
+#include "stnp_freertos.h"
+#include "../../Core/stnp_runtime.h"
+
+static StaticTask_t g_protocol_tcb;
+static StackType_t g_protocol_stack[STNP_FREERTOS_PROTOCOL_STACK_WORDS];
+static TaskHandle_t g_protocol_task = (TaskHandle_t)0;
+
+static StaticTask_t g_worker_tcb[STNP_FREERTOS_WORKER_COUNT];
+static StackType_t g_worker_stack[STNP_FREERTOS_WORKER_COUNT][STNP_FREERTOS_WORKER_STACK_WORDS];
+static TaskHandle_t g_worker_task[STNP_FREERTOS_WORKER_COUNT];
+/* 0=stopped, 1=starting, 2=started, 3=failed. */
+static STNP_U8 g_start_state = 0U;
+static STNP_U8 g_worker_signal = 0U;
+
+{% if "stm32_hal_uart" not in ir.sdks %}/* Generic FreeRTOS-only build: job-claim lock. When STM32 HAL UART is also
+ * generated, that adapter supplies a PRIMASK-based hook that is safe from both
+ * task and IRQ contexts and therefore takes precedence. */
+STNP_U32 STNP_Runtime_Lock(void)
+{
+    taskENTER_CRITICAL();
+    return 0U;
+}
+
+void STNP_Runtime_Unlock(STNP_U32 state)
+{
+    STNP_UNUSED(state);
+    taskEXIT_CRITICAL();
+}
+
+{% endif %}static void _signal_worker(void)
+{
+    TaskHandle_t worker;
+
+    taskENTER_CRITICAL();
+    worker = g_worker_task[g_worker_signal];
+    g_worker_signal = (STNP_U8)((g_worker_signal + 1U) % STNP_FREERTOS_WORKER_COUNT);
+    taskEXIT_CRITICAL();
+
+    if (worker != (TaskHandle_t)0)
+    {
+        xTaskNotifyGive(worker);
+    }
+}
+
+static void _protocol_task(void *argument)
+{
+    STNP_Result result;
+    STNP_UNUSED(argument);
+
+    for (;;)
+    {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        for (;;)
+        {
+            result = STNP_Process();
+            if (result == STNP_IDLE)
+            {
+                break;
+            }
+            if (result == STNP_OK)
+            {
+                _signal_worker();
+                continue;
+            }
+            if (result == STNP_ERR_BUFFER)
+            {
+                /* A complete frame is retained when the Core Job queue is full.
+                 * Block until a worker completion or another RX event wakes us. */
+                (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            }
+            /* Parse/route errors consume/resync their offending input; continue
+             * so later buffered frames are not delayed until another IRQ. */
+        }
+    }
+}
+
+static void _worker_task(void *argument)
+{
+    STNP_Result result;
+    STNP_UNUSED(argument);
+
+    for (;;)
+    {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        for (;;)
+        {
+            result = STNP_Dispatch();
+            if (result == STNP_IDLE)
+            {
+                break;
+            }
+            /* Handler/Callback executes in this normal task context and may be
+             * preempted/time-sliced by FreeRTOS. Dispatch itself claims/releases
+             * only queue metadata under the short runtime lock. */
+        }
+        if (g_protocol_task != (TaskHandle_t)0)
+        {
+            xTaskNotifyGive(g_protocol_task);
+        }
+    }
+}
+
+STNP_Result STNP_FreeRTOS_Start(void)
+{
+    STNP_U8 i;
+
+    taskENTER_CRITICAL();
+    if (g_start_state == 2U)
+    {
+        taskEXIT_CRITICAL();
+        return STNP_OK;
+    }
+    if (g_start_state != 0U)
+    {
+        taskEXIT_CRITICAL();
+        return STNP_ERR_STATE;
+    }
+    g_start_state = 1U;
+    taskEXIT_CRITICAL();
+
+    g_protocol_task = xTaskCreateStatic(
+        _protocol_task,
+        "STNP.Protocol",
+        (uint32_t)STNP_FREERTOS_PROTOCOL_STACK_WORDS,
+        STNP_NULL,
+        (UBaseType_t)STNP_FREERTOS_PROTOCOL_PRIORITY,
+        g_protocol_stack,
+        &g_protocol_tcb
+    );
+    if (g_protocol_task == (TaskHandle_t)0)
+    {
+        g_start_state = 3U;
+        return STNP_ERR_STATE;
+    }
+
+    for (i = 0U; i < (STNP_U8)STNP_FREERTOS_WORKER_COUNT; i++)
+    {
+        g_worker_task[i] = xTaskCreateStatic(
+            _worker_task,
+            "STNP.Worker",
+            (uint32_t)STNP_FREERTOS_WORKER_STACK_WORDS,
+            STNP_NULL,
+            (UBaseType_t)STNP_FREERTOS_WORKER_PRIORITY,
+            g_worker_stack[i],
+            &g_worker_tcb[i]
+        );
+        if (g_worker_task[i] == (TaskHandle_t)0)
+        {
+            g_start_state = 3U;
+            return STNP_ERR_STATE;
+        }
+    }
+
+    g_start_state = 2U;
+    /* Pump any bytes queued before task creation. */
+    xTaskNotifyGive(g_protocol_task);
+    return STNP_OK;
+}
+
+void STNP_FreeRTOS_NotifyRxFromISR(void)
+{
+    BaseType_t higher_priority_task_woken = pdFALSE;
+
+    if (g_protocol_task != (TaskHandle_t)0)
+    {
+        vTaskNotifyGiveFromISR(g_protocol_task, &higher_priority_task_woken);
+        portYIELD_FROM_ISR(higher_priority_task_woken);
+    }
+}
+
+void STNP_FreeRTOS_NotifyRx(void)
+{
+    if (g_protocol_task != (TaskHandle_t)0)
+    {
+        xTaskNotifyGive(g_protocol_task);
+    }
+}

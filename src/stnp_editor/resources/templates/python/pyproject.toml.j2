@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{{ ir.output_stem | replace('_', '-') }}-stnp"
+version = "{{ stnp_version }}"
+description = "Generated STNP Python protocol runtime for {{ ir.project_name }}"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6,<7",{% if 'uart' in sdks %}
+  "pyserial>=3.5,<4",{% endif %}
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["stnp*"]
+
+[tool.setuptools.package-data]
+stnp = ["protocol/*.yaml", "sdk/uart/*.yaml"]

@@ -1,0 +1,31 @@
+/**
+ ******************************************************************************
+ * @file    stnp_types.h
+ * @brief   工程共享类型（common_types）。
+ *
+ * 用户禁止修改协议代码。
+ ******************************************************************************
+ */
+
+#ifndef __STNP_TYPES_H
+#define __STNP_TYPES_H
+
+#include "stnp_platform.h"
+
+typedef enum
+{
+    STNP_DISABLE = 0,
+    STNP_ENABLE = 1
+} STNP_EnableState;
+
+{% for t in ir.common_types %}
+{% if t.kind == 'alias' %}
+typedef {% if t.base_type == 'u8' %}STNP_U8{% elif t.base_type == 'u16' %}STNP_U16{% elif t.base_type == 'u32' %}STNP_U32{% else %}STNP_I32{% endif %} {{ t.c_type }};
+{% elif t.kind == 'enum' %}
+typedef {% if t.base_type == 'u8' %}STNP_U8{% elif t.base_type == 'u16' %}STNP_U16{% elif t.base_type == 'u32' %}STNP_U32{% else %}STNP_I32{% endif %} {{ t.c_type }};
+{% for name, value in t.values %}
+#define STNP_{{ t.name }}_{{ name }} (({{ t.c_type }}){{ value }})
+{% endfor %}{% endif %}
+{% endfor %}
+
+#endif /* __STNP_TYPES_H */
