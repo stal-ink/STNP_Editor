@@ -4,7 +4,7 @@
 # compiles their strong symbols directly, avoiding weak/strong archive extraction traps.
 
 add_library(stnp STATIC
-{% for name in ["stnp_core.c", "stnp_frame.c", "stnp_codec.c", "stnp_vtl.c", "stnp_task.c", "stnp_notify.c", "stnp_router.c", "stnp_runtime.c"] %}    "${CMAKE_CURRENT_LIST_DIR}/Core/{{ name }}"
+{% for name in ["stnp_core.c", "stnp_frame.c", "stnp_codec.c", "stnp_vtl.c", "stnp_task.c", "stnp_notify.c", "stnp_router.c", "stnp_runtime.c", "stnp_debug.c", "stnp_unknown.c"] %}    "${CMAKE_CURRENT_LIST_DIR}/Core/{{ name }}"
 {% endfor %}{% if p.crc_enabled %}    "${CMAKE_CURRENT_LIST_DIR}/Core/stnp_crc.c"
 {% endif %}    "${CMAKE_CURRENT_LIST_DIR}/Module/stnp_module.c"
 {% for m in ir.modules %}    "${CMAKE_CURRENT_LIST_DIR}/Module/{{ m.dir_name }}/{{ m.snake }}.c"

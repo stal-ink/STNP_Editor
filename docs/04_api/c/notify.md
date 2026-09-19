@@ -52,9 +52,9 @@ STNP_Notify_Send(
 
 原始字节数组 API，长度由宏在数组退化前取得。误用 byte pointer 时，GCC/Clang 同样编译期拒绝。内部实现为 `STNP_Notify_SendBytes_Impl`。
 
-## 接收分发运行时开关
+## 接收分发：独占（module XOR global）
 
-本端是否把收到的 Notify 分发给 Module callback，由生成期 `protocol.options.notify_dispatch_receive.enabled` 给出初值，并可在运行时切换：
+本端是否走 Notify **接收分发路径**，由生成期 `protocol.options.notify_dispatch_receive.enabled` 给出初值，并可在运行时切换：
 
 ```c
 void STNP_NotifyDispatchReceive_Enable(void);
@@ -62,7 +62,9 @@ void STNP_NotifyDispatchReceive_Disable(void);
 STNP_U8 STNP_NotifyDispatchReceive_IsEnabled(void);
 ```
 
-该开关不改变 wire 格式，只门控本端接收分发。发送 `STNP_Notify_Send()` 不依赖该开关，也不依赖 RX → Process → Dispatch 路径。
+该开关不改变 wire 格式。关闭时本端不投递任何 Notify：模块认领与全局 `STNP_Notify_Callback` 均不触发。发送 `STNP_Notify_Send()` 不依赖该开关，也不依赖 RX → Process → Dispatch 路径。
+
+0.9.1 **独占**（仅 DR 开时）：模块认领后全局 `STNP_Notify_Callback` 不再收到同一帧。认领需要 DR 开、SOURCE 命中 Instance、且 `<Module>_NotifyCallbackIsEnabled() != 0`，再进入 `<Module>_NotifyDispatch`。未知码（返回 `STNP_ERR_COMMAND`）才落入全局；已知码 Decode 失败禁止转全局。**没有** `STNP_Notify_CallbackEnable`：DR 开且未认领时，用户实现 `stnp_notify_callback.c` 就能收。0.9.0 的「全局 + 模块并行」不再成立。
 
 ---
 

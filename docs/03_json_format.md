@@ -151,9 +151,9 @@
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `notify_dispatch_receive.enabled` | boolean | `false` | 本端是否启用 Notify 接收分发路径；允许运行时切换 |
+| `notify_dispatch_receive.enabled` | boolean | `false` | 本端是否启用 Notify 接收分发路径（生成初值，运行时仍可 Enable/Disable）。关闭时本端不投递任何 Notify：模块 typed 认领路径与全局 fallback 均不触发。不改 wire、不影响 STNP_Notify_Send、不改帧解析与入队；两端可不同。 |
 
-运行时提供启用、禁用、查询三支接口切换该本端行为，初值来自本配置。
+运行时提供启用、禁用、查询三支接口切换该本端行为，初值来自本配置。关闭时本端不投递任何 Notify：模块 typed 认领路径与全局 fallback 均不触发。schema **不**为 unknown / trace / `STNP_DEBUG` 增加键。
 
 ## 3.4 `common_types`
 

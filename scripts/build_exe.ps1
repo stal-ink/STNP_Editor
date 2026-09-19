@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Build the single-file `stnpe.exe` with PyInstaller.
 
@@ -56,10 +56,6 @@
       does NOT make the build byte-identical.
       `-ReproducibilityCheck` builds twice and compares those manifests.
 
-.PARAMETER Python
-    Python interpreter that has PyInstaller installed.  Resolution order:
-    -Python > $env:STNP_PYTHON > known conda env for this repo > `python` on PATH.
-
 .PARAMETER NoClean
     Skip removing `build\pyinstaller` and `dist` before building.
 
@@ -81,13 +77,16 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Python,
     [switch]$NoClean,
     [switch]$CheckOnly,
     [switch]$ReproducibilityCheck
 )
 
 $ErrorActionPreference = "Stop"
+
+# Shared toolchain resolver (S2/S3): one resolution order for every entry point.
+# The D12 disclaimer is printed with the header below.
+. (Join-Path $PSScriptRoot "toolchain.ps1")
 
 if ($ReproducibilityCheck -and $NoClean) {
     throw "-ReproducibilityCheck requires two clean builds; it cannot be combined with -NoClean."
@@ -100,24 +99,13 @@ $DistDir = Join-Path $RepoRoot "dist"
 $WorkDir = Join-Path $RepoRoot "build\pyinstaller"
 $BuildReqs = Join-Path $RepoRoot "requirements-build.txt"
 
-function Resolve-PythonExe {
-    param([string]$Explicit)
-
-    if ($Explicit) { return $Explicit }
-    if ($env:STNP_PYTHON) { return $env:STNP_PYTHON }
-
-    $known = "E:\develop.environment.pack\anaconda3\envs\STNP_EDITOR_ENV_py3.12\python.exe"
-    if (Test-Path -LiteralPath $known) { return $known }
-
-    $cmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-
-    throw "No Python interpreter found. Pass -Python <path> or set STNP_PYTHON."
-}
-
-$pythonExe = Resolve-PythonExe -Explicit $Python
-if (-not (Test-Path -LiteralPath $pythonExe)) {
-    throw "Python interpreter not found: $pythonExe"
+$pythonExe = $null
+try {
+    # -RequireImport:$false: PyInstaller never imports the package, but the
+    # requires-python check still applies.
+    $pythonExe = (Resolve-StnpPython -RequireImport $false).Path
+} catch {
+    throw ("No Python interpreter found. {0}" -f $_.Exception.Message)
 }
 if (-not (Test-Path -LiteralPath $SpecPath)) {
     throw "Spec file not found: $SpecPath"
@@ -181,12 +169,33 @@ print("PREREQ OK")
 $prereqOutput = $PrereqScript | & $pythonExe - 2>&1 | Out-String
 $prereqRc = $LASTEXITCODE
 
-# gcc/cmake are not used by PyInstaller (it compiles no C here) -> warn only.
-$missingTools = @()
-foreach ($tool in @("gcc", "cmake")) {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        $missingTools += $tool
+# gcc/cmake/git are not used by PyInstaller (it compiles no C here) -> warn only,
+# but they still go through the shared resolver so no machine path lives in this
+# repository.  A failed optional resolution is reported, never silently ignored.
+$optionalToolDirs = New-Object System.Collections.ArrayList
+$optionalToolNotes = New-Object System.Collections.ArrayList
+$missingTools = New-Object System.Collections.ArrayList
+foreach ($name in @("gcc", "cmake")) {
+    try {
+        $resolved = if ($name -eq "gcc") { Resolve-StnpGcc } else { Resolve-StnpCmake }
+    } catch {
+        [void]$missingTools.Add($name)
+        [void]$optionalToolNotes.Add(("  {0,-10} : {1}" -f $name, $_.Exception.Message))
+        continue
     }
+    [void]$optionalToolDirs.Add($resolved.Directory)
+    [void]$optionalToolNotes.Add(("  " + (Format-StnpToolLine -Resolved $resolved)))
+    $others = @(Get-StnpOtherCandidates -Resolved $resolved)
+    if ($others.Count -gt 0) {
+        [void]$optionalToolNotes.Add(("  其它候选：{0}" -f ($others -join "; ")))
+    }
+}
+
+$gitExe = $null
+try {
+    $gitExe = (Resolve-StnpGit).Path
+} catch {
+    [void]$optionalToolNotes.Add(("  git        : {0}" -f $_.Exception.Message))
 }
 
 if ($prereqRc -ne 0) {
@@ -199,7 +208,7 @@ if ($prereqRc -ne 0) {
 }
 
 if ($missingTools.Count -gt 0) {
-    $prereqLine = "prereq     : OK (gcc/cmake not on PATH: {0}; not required by PyInstaller)" -f ($missingTools -join ", ")
+    $prereqLine = "prereq     : OK (gcc/cmake not resolved: {0}; not required by PyInstaller)" -f ($missingTools -join ", ")
 } else {
     $prereqLine = "prereq     : OK"
 }
@@ -208,6 +217,9 @@ Write-Host "python     : $pythonExe"
 Write-Host "spec       : $SpecPath"
 Write-Host "repo root  : $RepoRoot"
 Write-Host $prereqLine
+Write-Host "toolchain  :"
+foreach ($note in $optionalToolNotes) { Write-Host $note }
+Write-StnpToolchainDisclaimer
 
 # --- Archive manifest (F2.3 reproducibility) ---------------------------------
 # Opens the PRODUCED exe with PyInstaller's own CArchiveReader, so it validates
@@ -275,14 +287,25 @@ function Invoke-StnpeBuild {
         }
     }
 
-    & $pythonExe -m PyInstaller `
-        --noconfirm `
-        --clean `
-        --distpath $DistDir `
-        --workpath $WorkDir `
-        $SpecPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "PyInstaller failed with exit code $LASTEXITCODE"
+    # Windows PowerShell 5.1 turns a native command's stderr into a terminating
+    # error while ErrorActionPreference is Stop, and PyInstaller logs to stderr;
+    # the scope is relaxed for this call (same reason Invoke-StnpCapture exists)
+    # and the exit code is checked explicitly instead.  pwsh 7 is unaffected.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $pythonExe -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --distpath $DistDir `
+            --workpath $WorkDir `
+            $SpecPath
+        $pyinstallerRc = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($pyinstallerRc -ne 0) {
+        throw "PyInstaller failed with exit code $pyinstallerRc"
     }
 
     $built = Join-Path $DistDir "stnpe.exe"
@@ -353,10 +376,12 @@ Add-BuildPathEntry $pythonDir
 # ffi live.  Adding it is what makes the bundle COMPLETE; without it PyInstaller
 # cannot resolve the dependencies of _ssl/_hashlib/_lzma/_bz2/pyexpat/_ctypes.
 Add-BuildPathEntry (Join-Path $pythonDir "Library\bin")
-# Optional repo toolchain dirs: PyInstaller compiles no C here, so these are
-# harmless extras kept for parity with the rest of the toolchain.
-Add-BuildPathEntry "E:\develop.environment.pack\mingw64\bin"
-Add-BuildPathEntry "E:\develop.environment.pack\CMake\bin"
+# Optional toolchain dirs, resolved above through the shared resolver (no machine
+# paths in the repository).  PyInstaller compiles no C, so these are harmless
+# extras kept for parity with the rest of the toolchain.
+foreach ($directory in $optionalToolDirs) {
+    Add-BuildPathEntry $directory
+}
 
 # The caller's environment is captured before anything is replaced.  The
 # try/finally below restores it on EVERY exit path: normal return, -CheckOnly,
@@ -373,12 +398,7 @@ try {
     # SOURCE_DATE_EPOCH reduces PE timestamp variance (PyInstaller honours it when
     # set); it does NOT make the build byte-identical.  Prefer the last commit so
     # rebuilds of the same revision agree; otherwise keep an inherited value.
-    $gitExe = $null
-    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($gitCmd) { $gitExe = $gitCmd.Source }
-    elseif (Test-Path -LiteralPath "E:\assistant.software.pack\Git\cmd\git.exe") {
-        $gitExe = "E:\assistant.software.pack\Git\cmd\git.exe"
-    }
+    # $gitExe was resolved above, before PATH was normalized.
     $epochSource = "not set (git unavailable)"
     if ($gitExe) {
         $commitEpoch = (& $gitExe -C $RepoRoot log -1 --format=%ct 2>$null | Out-String).Trim()

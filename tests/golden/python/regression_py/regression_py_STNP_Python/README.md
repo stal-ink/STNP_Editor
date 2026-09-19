@@ -1,6 +1,6 @@
 # regression_py — STNP Python
 
-由 **STNP Editor 0.9.0** 生成。`stnp/protocol/` 树是生成的协议代码；需要修改时请从 Editor 重新生成，不要手工编辑。
+由 **STNP Editor 0.9.1** 生成。`stnp/protocol/` 树是生成的协议代码；需要修改时请从 Editor 重新生成，不要手工编辑。
 
 ## 快速使用
 
@@ -27,5 +27,6 @@ items = []
 
 - `stnp/protocol/protocol.yaml`：Editor 生成的协议事实源；不要用于运行时调参。
 - `config/stnp.yaml`：用户运行时设置。
+- `config/trace.yaml`：`stnp.init()` → `trace.load()`；默认关。读 YAML 依赖 PyYAML（已写入本目录 `pyproject.toml`）。
 - `stnp/sdk/uart/uart.yaml`：用户 UART/pyserial 设置。
 在本目录运行生成的教程：`python Example/main.py`。

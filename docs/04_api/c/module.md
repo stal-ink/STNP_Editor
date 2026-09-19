@@ -106,6 +106,7 @@ void Sensor_Read(SensorHandle *self);
 
 ```c
 void Sensor_NotifyCallbackEnable(STNP_EnableState state);
+STNP_U8 Sensor_NotifyCallbackIsEnabled(void);
 
 void Sensor_NotifyCallback(
     SensorHandle *self,
@@ -115,7 +116,7 @@ void Sensor_NotifyCallback(
 );
 ```
 
-每个 Module 一个 callback（弱符号默认空实现）。框架先按 Notify VTL Decode typed Payload，再调用 callback。`state` 使用 `STNP_ENABLE` / `STNP_DISABLE`。本端是否把收到的 Notify 送到这条路径，还受 `STNP_NotifyDispatchReceive_*` 运行时门控。
+每个 Module 一个 callback（弱符号默认空实现）。`NotifyCallbackIsEnabled` 读的就是 `NotifyCallbackEnable` 写入的同一份 `g_notify_callback_enabled`（1 或 0），独占路由用它决定是否调用 `<Module>_NotifyDispatch`。`state` 使用 `STNP_ENABLE` / `STNP_DISABLE`。本端整条接收分发还受 `STNP_NotifyDispatchReceive_*` 门控；DR 关闭时即使已 Enable 也不走模块，全局 `STNP_Notify_Callback` 也不触发。
 
 ## `<Module>_NotifyDispatch`
 

@@ -49,12 +49,12 @@ UART / other transport TX
 
 ## 使用限制
 
-这种方式用于临时诊断，不建议作为正式日志系统：
+这种方式用于临时诊断，不建议作为正式日志系统。0.9.1 链路站点请用 C `STNP_DEBUG` / Python `stnp.trace.debug`，见 [链路验证](trace_and_breakpoints.md)；Notify 打点仍只是临时手段。
 
 - 不要在高频 ISR 中持续发送大量 Notify；
 - UART 中断发送可能遇到 TX FIFO 满或 `HAL_BUSY`；
 - 调试发送本身会改变一定的执行时序；
-- 定位完成后应删除临时打点，避免污染正式协议流量。仓库中已无独立的 Debug Trace 宏计划文档。
+- 定位完成后应删除临时打点，避免污染正式协议流量。
 
 ---
 

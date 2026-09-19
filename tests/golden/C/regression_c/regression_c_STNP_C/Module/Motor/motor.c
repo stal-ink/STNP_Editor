@@ -7,6 +7,7 @@
 
 #include "motor.h"
 #include "../../Core/stnp_notify.h"
+#include "../../Core/stnp_debug.h"
 #include "../../Core/stnp_vtl.h"
 
 static Motor_ValidateCallback g_validate_set_speed = STNP_NULL;
@@ -83,6 +84,11 @@ void Motor_NotifyCallbackEnable(STNP_EnableState state)
     g_notify_callback_enabled = state;
 }
 
+STNP_U8 Motor_NotifyCallbackIsEnabled(void)
+{
+    return (STNP_U8)(g_notify_callback_enabled == STNP_ENABLE);
+}
+
 STNP_Result Motor_OnTask(MotorHandle *self, STNP_U8 cmd, const STNP_U8 *payload, STNP_U8 len)
 {
     const STNP_VTL_Desc *desc = STNP_VTL_Find(
@@ -94,6 +100,7 @@ STNP_Result Motor_OnTask(MotorHandle *self, STNP_U8 cmd, const STNP_U8 *payload,
     {
         return STNP_ERR_PARAM;
     }
+    STNP_BP_ON_TASK();
     if (desc == STNP_NULL)
     {
         return STNP_ERR_COMMAND;

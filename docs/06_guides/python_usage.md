@@ -20,6 +20,7 @@ stnpe generate examples/dual_multi_c_py/dual_multi.stnp examples/dual_multi_c_py
 ├─ stnp/sdk/uart/          可选 UART SDK
 ├─ stnp/protocol/          Module / Instance / Payload（不要手改）
 ├─ config/stnp.yaml        运行时用户配置
+├─ config/trace.yaml       stnp.trace（debug/format，默认关）
 ├─ Example/                emit_examples 时
 ├─ User/                   emit_user_scaffold 时（create-once）
 ├─ pyproject.toml          生成包元数据（始终写出）
@@ -114,11 +115,11 @@ def on_led(instance, result, payload):
     print(instance.name, result, payload.state)
 
 @stnp.on_notify
-def on_any(instance, notification, result, payload):
-    print(instance, notification, result, payload)
+def on_any(instance, code, result, payload):
+    print(instance, code, result, payload)
 ```
 
-无 Payload 通知的 callback 只有 `(instance, result)`。本端接收分发可被 `stnp.notify_dispatch_receive_disable()` 关掉：帧仍会解析入队，但不进入 Module callback。未知 Instance/code 时全局回调收到更原始的 id/code/bytes。
+无 Payload 通知的 typed callback 只有 `(instance, result)`。**模块 `.func` 认领后 `on_notify` 不再收同一帧。** 全局只收到 raw：未知 Instance 为 `(source_id, code, result, bytes)`，已知 Instance 为 `(instance, code, result, bytes)`。`stnp.notify_dispatch_receive_disable()` 关掉整条接收分发：typed 与 `@stnp.on_notify` 都不触发。未知帧另见 `@stnp.on_unknown_frame`（默认关，须再 `unknown_frame_callback_enable()`）。
 
 ## 发送 Notify
 
@@ -140,7 +141,7 @@ stnp.init(port="COM7", baudrate=115200)
 
 ## 应用文件组织
 
-推荐：一个 `app.py` import `stnp` 并注册全部装饰器，然后 `stnp.init()`。协议 YAML、`config/stnp.yaml`、`uart.yaml` 不要混用。可选 `User/` scaffold 只创建一次，重新生成永不覆盖。
+推荐：一个 `app.py` import `stnp` 并注册全部装饰器，然后 `stnp.init()`。协议 YAML、`config/stnp.yaml`、`uart.yaml`、`config/trace.yaml` 不要混用。可选 `User/` scaffold 只创建一次，重新生成永不覆盖。
 
 线程模型：调用线程负责 TX；`stnp-rx` 读串口并解析；`stnp-dispatch` 跑用户函数。不要在回调里做长时间阻塞读。分层原因见 [Python 运行时](../05_architecture/python_runtime.md)。
 
@@ -150,7 +151,7 @@ stnp.init(port="COM7", baudrate=115200)
 2. STM32 按 [STM32 HAL UART](stm32_hal_uart.md) 集成并烧录。
 3. PC 写上位机：先 `@notify.func` 打印，再 `stnp.task...` 下发。
 4. 用 `print(stnp.stats)` 观察 CRC 与丢帧。
-5. 需要关接收分发时调用 `stnp.notify_dispatch_receive_disable()`，确认本端不再进入 Notify callback。
+5. 需要关掉本端 **全部** Notify 接收投递时调用 `stnp.notify_dispatch_receive_disable()`（typed 与 `@stnp.on_notify` 都不触发）。发送不受影响。
 
 ---
 

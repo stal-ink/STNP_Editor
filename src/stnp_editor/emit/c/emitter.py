@@ -57,7 +57,9 @@ def emit_c(ir: ProjectIR, output: Path, build: dict, *, template_root: Path | No
     add(f"{platform_dir}/stnp_types.h", render(env, "Platform/stnp_types.h.j2", **ctx))
 
     core_names = [
-        "stnp.h", "stnp_core.h", "stnp_core.c", "stnp_frame.h", "stnp_frame.c",
+        "stnp.h", "stnp_core.h", "stnp_core.c", "stnp_debug.h", "stnp_debug.c",
+        "stnp_unknown.h", "stnp_unknown.c",
+        "stnp_frame.h", "stnp_frame.c",
         "stnp_codec.h", "stnp_codec.c", "stnp_vtl.h", "stnp_vtl.c", "stnp_task.h", "stnp_task.c",
         "stnp_notify.h", "stnp_notify.c", "stnp_router.h", "stnp_router.c",
         "stnp_runtime.h", "stnp_runtime.c",

@@ -1,0 +1,8 @@
+# config/trace.yaml
+trace:
+  debug:
+    enabled: false
+  format:
+    enabled: false
+    commands: []          # MODULE.COMMAND
+    notifications: []     # MODULE.NOTIFY

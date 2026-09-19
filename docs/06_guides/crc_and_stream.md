@@ -28,18 +28,20 @@ STNP_Transport_Receive(data, length);
 
 随后在非中断上下文调用 `STNP_Process()` 推进协议（单次至多一帧）；收到完整帧后再由 `STNP_Dispatch()` 执行业务。Receive 整块能放下才提交；放不下返回 `STNP_ERR_BUFFER`，不做部分写入。
 
-Python：把 `transport.read()` 得到的 chunk 交给 `StreamParser.feed()`。一次 `feed` 可吐出多帧，但仍按同一 SOF / 1 字节滑动规则。
+Python：把 `transport.read()` 得到的 chunk 交给 `StreamParser.feed()`。一次 `feed` 可吐出多帧，SOF 猎寻与 C 一样 **每次只滑 1 字节**（不是一次丢掉整段前缀）。
 
 Core 自动处理：
 
 - 一帧拆成多次输入；
 - 一次输入包含多帧；
-- 帧前噪声（无 SOF 时只保留末字节）；
-- Task / Notify 混合（取更靠前的 2 字节 SOF）；
+- 帧前噪声（不是协议 SOF 则每次丢掉 1 字节）；
+- Task / Notify 混合（只认两个协议 SOF，**没有**第三 SOF / log skip）；
 - `LEN > max_payload`；
 - CRC 错误后的重新同步。
 
 结构或 CRC 错误使用 **1 字节滑动重同步**，不会按错误候选帧的推测长度整段丢弃，从而避免吞掉嵌套在错误候选中的后续有效帧。`LEN` 下标随 SEQ 开关变化（Task 为 4 或 6，Notify 为 6 或 8），解析器按 Capability 先算头长。详见冻结规范 §3.8 / §3.10。
+
+未知帧用户回调默认关：须 `SetCallback` **并且** `Enable`（Python 为 `@stnp.on_unknown_frame` 再 `unknown_frame_callback_enable()`）。SOF 噪声另有第二开关，默认不上报。运行时不自动打印、不跳过「log 信封」。
 
 ---
 

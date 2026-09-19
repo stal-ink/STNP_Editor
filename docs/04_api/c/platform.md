@@ -50,6 +50,10 @@ STNP_FRAME_MAX_SIZE
 
 另有可编译期覆盖的 `STNP_RX_RING_SIZE`、`STNP_JOB_QUEUE_DEPTH`。CRC 关闭时 `STNP_CRC_SIZE` 为 `0U`。
 
+`STNP_DEBUG` **不是** `stnp_platform_config.h` 里的工程宏。默认 0；仅允许 0/1。加 `-DSTNP_DEBUG=1` 时 `STNP_BP_*()` 调用 weak `STNP_Debug_Trap`。禁止运行时 Enable，禁止 `STNP_LOGE` / `STNP_LOG` / `STNP_LOG_LEVEL`，golden 按 0 生成。站点与用法见 [链路验证](../../06_guides/trace_and_breakpoints.md)。
+
+`STNP_UNKNOWN_REPORT_SOF` 默认 0，定义在 `stnp_unknown.h`；`stnp_platform_config.h` **禁止**强行定义为 1。
+
 ## Codec
 
 ```c

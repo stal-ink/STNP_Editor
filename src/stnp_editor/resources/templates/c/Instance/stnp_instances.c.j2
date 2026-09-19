@@ -8,6 +8,7 @@
 #include "stnp_instances.h"
 #include "../Core/stnp_router.h"
 #include "../Core/stnp_notify.h"
+#include "../Core/stnp_debug.h"
 {% for inst in ir.instances %}static {{ inst.module.handle_type }} {{ inst.handle_var }};
 {% endfor %}
 STNP_Result STNP_Instances_Init(void)
@@ -20,13 +21,26 @@ STNP_Result STNP_Instances_Init(void)
 }
 STNP_Result STNP_Notify_Dispatch(STNP_U8 source, STNP_U8 notify_code, STNP_U16 result, const STNP_U8 *payload, STNP_U8 length)
 {
-    STNP_Notify_Callback(source, notify_code, result, payload, length);
-    if (STNP_NotifyDispatchReceive_IsEnabled() != 0U)
+    if (STNP_NotifyDispatchReceive_IsEnabled() == 0U)
     {
-{% for inst in ir.instances %}        if (source == STNP_INSTANCE_{{ inst.macro }}_ID)
+        return STNP_OK;
+    }
+{% for inst in ir.instances %}    {% if not loop.first %}else {% endif %}if (source == STNP_INSTANCE_{{ inst.macro }}_ID)
+    {
+        if ({{ inst.module.notify_callback_is_enabled_fn }}() != 0U)
         {
-            return {{ inst.module.notify_dispatch_fn }}(&{{ inst.handle_var }}, notify_code, result, payload, length);
+            STNP_Result r = {{ inst.module.notify_dispatch_fn }}(&{{ inst.handle_var }}, notify_code, result, payload, length);
+            if (r != STNP_ERR_COMMAND)
+            {
+                if (r == STNP_OK)
+                {
+                    STNP_BP_ON_NOTIFY();
+                }
+                return r;
+            }
         }
-{% endfor %}    }
+    }
+{% endfor %}    STNP_BP_ON_NOTIFY();
+    STNP_Notify_Callback(source, notify_code, result, payload, length);
     return STNP_OK;
 }

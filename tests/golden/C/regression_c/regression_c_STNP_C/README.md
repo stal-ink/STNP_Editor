@@ -1,6 +1,6 @@
 # regression_c
 
-本目录由 STNP Editor 0.9.0 从 `regression_c` 生成。
+本目录由 STNP Editor 0.9.1 从 `regression_c` 生成。
 
 ## 运行模型
 

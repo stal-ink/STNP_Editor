@@ -145,6 +145,7 @@ class ModuleIR:
     validator_setter: str
     notify_callback_fn: str
     notify_callback_enable_fn: str
+    notify_callback_is_enabled_fn: str
     on_task_fn: str
     enabled: bool = True
 

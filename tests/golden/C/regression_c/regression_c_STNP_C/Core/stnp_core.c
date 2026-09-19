@@ -6,6 +6,8 @@
  */
 
 #include "stnp_core.h"
+#include "stnp_debug.h"
+#include "stnp_unknown.h"
 #include "stnp_frame.h"
 #include "stnp_runtime.h"
 
@@ -96,6 +98,9 @@ static STNP_Result _try_complete_frame(STNP_U8 *complete)
                               (g_parse_buf[1] == STNP_NOTIFY_HEADER1));
         if ((is_task == 0U) && (is_notify == 0U))
         {
+#if STNP_UNKNOWN_REPORT_SOF
+            STNP_UnknownFrame_Report(STNP_UNKNOWN_SOF, g_parse_buf, 1U);
+#endif
             _parse_shift(1U);
             continue;
         }
@@ -109,8 +114,10 @@ static STNP_Result _try_complete_frame(STNP_U8 *complete)
             payload_len = g_parse_buf[4];
             if (payload_len > STNP_PAYLOAD_MAX)
             {
+                STNP_UnknownFrame_Report(STNP_UNKNOWN_LEN, g_parse_buf, STNP_TASK_FIXED_SIZE);
                 _parse_shift(1U);
                 *complete = 1U;
+                STNP_BP_PARSE_RESYNC();
                 return STNP_ERR_LENGTH;
             }
             need = (STNP_U16)(STNP_TASK_FIXED_SIZE + payload_len + _crc_extra());
@@ -124,10 +131,13 @@ static STNP_Result _try_complete_frame(STNP_U8 *complete)
             {
                 /* CRC/structural failure: slide one byte so a valid nested SOF
                  * can still be recovered on the next Process call. */
+                STNP_UnknownFrame_Report(STNP_UNKNOWN_CRC, g_parse_buf, need);
                 _parse_shift(1U);
                 *complete = 1U;
+                STNP_BP_PARSE_RESYNC();
                 return result;
             }
+            STNP_BP_PARSE_OK();
             result = STNP_Runtime_EnqueueTask(
                 task_frame.target,
                 task_frame.code,
@@ -137,6 +147,10 @@ static STNP_Result _try_complete_frame(STNP_U8 *complete)
             if (result == STNP_ERR_BUFFER)
             {
                 return result;
+            }
+            if (result != STNP_OK)
+            {
+                STNP_UnknownFrame_Report(STNP_UNKNOWN_TASK, g_parse_buf, need);
             }
             _parse_shift(need);
             *complete = 1U;
@@ -150,8 +164,10 @@ static STNP_Result _try_complete_frame(STNP_U8 *complete)
         payload_len = g_parse_buf[6];
         if (payload_len > STNP_PAYLOAD_MAX)
         {
+            STNP_UnknownFrame_Report(STNP_UNKNOWN_LEN, g_parse_buf, STNP_NOTIFY_FIXED_SIZE);
             _parse_shift(1U);
             *complete = 1U;
+            STNP_BP_PARSE_RESYNC();
             return STNP_ERR_LENGTH;
         }
         need = (STNP_U16)(STNP_NOTIFY_FIXED_SIZE + payload_len + _crc_extra());
@@ -163,10 +179,13 @@ static STNP_Result _try_complete_frame(STNP_U8 *complete)
         result = STNP_Frame_ParseNotify(g_parse_buf, need, &notify_frame);
         if (result != STNP_OK)
         {
+            STNP_UnknownFrame_Report(STNP_UNKNOWN_CRC, g_parse_buf, need);
             _parse_shift(1U);
             *complete = 1U;
+            STNP_BP_PARSE_RESYNC();
             return result;
         }
+        STNP_BP_PARSE_OK();
         result = STNP_Runtime_EnqueueNotify(
             notify_frame.source,
             notify_frame.notify_code,
@@ -209,6 +228,7 @@ STNP_Result STNP_Transport_Write(const STNP_U8 *data, STNP_U16 length)
     {
         return STNP_ERR_PARAM;
     }
+    STNP_BP_TRANSPORT_WRITE();
     return g_transport_write(data, length);
 }
 
@@ -236,6 +256,7 @@ STNP_Result STNP_Transport_Receive(const STNP_U8 *data, STNP_U16 length)
         tail = _rx_next(tail);
     }
     g_rx_tail = tail;
+    STNP_BP_RX_COPY();
     return STNP_OK;
 }
 
@@ -245,6 +266,7 @@ STNP_Result STNP_Process(void)
     STNP_U8 complete;
     STNP_U8 byte;
 
+    STNP_BP_PROCESS_ENTER();
     for (;;)
     {
         result = _try_complete_frame(&complete);
@@ -259,7 +281,9 @@ STNP_Result STNP_Process(void)
         }
         if (g_parse_len >= STNP_FRAME_MAX_SIZE)
         {
+            STNP_UnknownFrame_Report(STNP_UNKNOWN_LEN, g_parse_buf, g_parse_len);
             _parse_shift(1U);
+            STNP_BP_PARSE_RESYNC();
             return STNP_ERR_LENGTH;
         }
         g_parse_buf[g_parse_len] = byte;

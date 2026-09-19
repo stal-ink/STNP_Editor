@@ -18,7 +18,6 @@
 # ============================================================================
 [CmdletBinding()]
 param(
-    [string]$Python = "",
     [string]$OutputRoot = ""
 )
 
@@ -37,59 +36,41 @@ function Fail([string]$Message) {
     exit 1
 }
 
-function Find-Tool([string]$Name, [string]$Hint) {
-    $command = Get-Command $Name -ErrorAction SilentlyContinue
-    if (-not $command) { Fail "未找到 '$Name'。$Hint" }
-    return $command.Source
-}
+# 共享工具链解析器（scripts/toolchain.ps1）：全仓同一解析顺序（STNP_* 环境变量
+# -> PATH -> 明确失败），不再内置任何本机路径。
+. (Join-Path $RepoRoot "scripts\toolchain.ps1")
+Write-StnpToolchainDisclaimer
 
 # --- Python 解释器解析（与 scripts/test.ps1 同一条链） -----------------------
-# 顺序：-Python 参数 -> $env:STNP_PYTHON -> 已知 conda 环境（存在性守卫）
-#       -> PATH 上的 python -> PATH 上的 py。
-# 本机 python 不在 PATH 上，所以不能只查 PATH。
-$KnownCondaPython = "E:\develop.environment.pack\anaconda3\envs\STNP_EDITOR_ENV_py3.12\python.exe"
-$TriedOrder = "-Python 参数 -> STNP_PYTHON 环境变量 -> 已知 conda 环境（$KnownCondaPython）-> PATH 上的 python -> PATH 上的 py"
-$PythonExe = $null
-$PythonSource = $null
+try {
+    $ResolvedPython = Resolve-StnpPython
+} catch {
+    Fail $_.Exception.Message
+}
+$Python = $ResolvedPython.Path
+Write-Host (Format-StnpToolLine -Resolved $ResolvedPython)
+$otherPython = @(Get-StnpOtherCandidates -Resolved $ResolvedPython)
+if ($otherPython.Count -gt 0) { Write-Host ("其它候选：{0}" -f ($otherPython -join "; ")) }
 
-if ($Python) {
-    $PythonExe = $Python
-    $PythonSource = "-Python 参数"
-} elseif ($env:STNP_PYTHON) {
-    $PythonExe = $env:STNP_PYTHON
-    $PythonSource = "STNP_PYTHON 环境变量"
-} elseif (Test-Path -LiteralPath $KnownCondaPython) {
-    $PythonExe = $KnownCondaPython
-    $PythonSource = "已知 conda 环境"
-} else {
-    $pythonOnPath = Get-Command python -ErrorAction SilentlyContinue
-    if ($pythonOnPath) {
-        $PythonExe = & $pythonOnPath.Source -c "import sys; print(sys.executable)"
-        $PythonSource = "PATH 上的 python (sys.executable)"
-    } else {
-        $pyOnPath = Get-Command py -ErrorAction SilentlyContinue
-        if ($pyOnPath) {
-            $PythonExe = & $pyOnPath.Source -c "import sys; print(sys.executable)"
-            $PythonSource = "PATH 上的 py (sys.executable)"
-        }
-    }
+try {
+    $ResolvedGcc = Resolve-StnpGcc
+} catch {
+    Fail $_.Exception.Message
 }
+$Gcc = $ResolvedGcc.Path
+Write-Host (Format-StnpToolLine -Resolved $ResolvedGcc)
+$otherGcc = @(Get-StnpOtherCandidates -Resolved $ResolvedGcc)
+if ($otherGcc.Count -gt 0) { Write-Host ("其它候选：{0}" -f ($otherGcc -join "; ")) }
 
-if (-not $PythonExe) {
-    Fail "未找到 Python 解释器。已依次尝试：$TriedOrder。请安装 Python 3.10+（并执行 python -m pip install -e `".[dev]`"），或先激活包含依赖的虚拟环境/conda 环境。"
+# objcopy 与 gcc 同目录（MinGW-w64），其次才查 PATH。
+$Objcopy = Join-Path $ResolvedGcc.Directory "objcopy.exe"
+if (-not (Test-Path -LiteralPath $Objcopy)) {
+    $objcopyCommand = Get-Command objcopy -ErrorAction SilentlyContinue
+    if ($objcopyCommand) { $Objcopy = $objcopyCommand.Source }
 }
-if (-not (Test-Path -LiteralPath $PythonExe)) {
-    Fail "Python 解释器不存在：$PythonExe（来源：$PythonSource）。已依次尝试：$TriedOrder。"
+if (-not (Test-Path -LiteralPath $Objcopy)) {
+    Fail "未找到 'objcopy'。objcopy 随 MinGW-w64 提供，请把它的 bin 目录加入 PATH。"
 }
-$PythonVersion = & $PythonExe -c "import sys; print(sys.version.split()[0])"
-if ($LASTEXITCODE -ne 0 -or -not $PythonVersion) {
-    Fail "Python 解释器无法运行：$PythonExe（来源：$PythonSource）。已依次尝试：$TriedOrder。"
-}
-$Python = $PythonExe
-Write-Host ("python    : {0} ({1}, from {2})" -f $Python, $PythonVersion.Trim(), $PythonSource)
-
-$Gcc = Find-Tool "gcc" "请安装 MinGW-w64 并把它的 bin 目录加入 PATH。"
-$Objcopy = Find-Tool "objcopy" "objcopy 随 MinGW-w64 提供，请把它的 bin 目录加入 PATH。"
 
 if (Test-Path -LiteralPath $OutputRoot) { Remove-Item -Recurse -Force -LiteralPath $OutputRoot }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null

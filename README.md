@@ -1,10 +1,10 @@
 # STNP Editor
 
-**版本：0.9.0 — 协议 / 构建分离**
+**版本：0.9.1 — Notify 独占与运行时诊断**
 
 STNP Editor 以一份 `.stnp` 协议工程加一份 `stnp.build.json` 生成配置作为所选 **C** 或 **Python** 生成目标的单一事实来源，二者共享同一套 IR。这两个文件各自独立校验，互不引用。桌面 GUI 已移除；`stnpe` 命令行工具是唯一入口。
 
-0.8.2 在保持现有 C 运行时与 SDK 行为的前提下，增加了可选的自动生成 Command 通知。Python 使用单一公开命名空间（`stnp.core`、`stnp.sdk.*`、`stnp.protocol`），将 Module 定义与可路由 Instance 分离，支持基于装饰器的命令实现与校验函数，将 TaskSet 批量合并为一次传输写入，并在两个操作系统线程上运行 RX/分发。
+0.9.1 把 Notify 接收改为模块与全局独占，并加上默认关闭的未知帧回调、C `STNP_DEBUG` 与 Python `stnp.trace`。0.8.2 在保持现有 C 运行时与 SDK 行为的前提下，增加了可选的自动生成 Command 通知。Python 使用单一公开命名空间（`stnp.core`、`stnp.sdk.*`、`stnp.protocol`），将 Module 定义与可路由 Instance 分离，支持基于装饰器的命令实现与校验函数，将 TaskSet 批量合并为一次传输写入，并在两个操作系统线程上运行 RX/分发。
 
 ## 安装
 
@@ -67,7 +67,7 @@ C 目标保留现有的 Platform/Core/Module/Instance/Implementation/SDK 布局�
 pytest -q
 ```
 
-0.9.0 发布回归：**153 项测试通过，2 项跳过**，包含按语言分离的 C/Python golden 输出检查。
+含 C/Python golden 对照。Windows 上带 `-pthread` 的并发夹具用 `-static` 链接（不再依赖 `libwinpthread-1.dll`）；`conftest.py` 会按统一解析器把解析到的 `gcc` / `cmake` 目录前置到 `PATH`，不写死盘符路径。工具链解析顺序与覆盖方式见 [快速开始](docs/01_getting_started.md)「环境准备」。
 
 ## 文档
 
@@ -75,4 +75,5 @@ pytest -q
 - [快速开始](docs/01_getting_started.md) · [协议格式](docs/02_protocol.md) · [JSON 与生成配置](docs/03_json_format.md)
 - [C API](docs/04_api/c/README.md) · [Python API](docs/04_api/python/README.md)
 - [架构](docs/05_architecture/README.md) · [指南](docs/06_guides/README.md)
-- [迁移](docs/07_migration.md) · [更新日志](docs/08_changelog.md)
+- [迁移](docs/07_migration.md) · [变更记录](docs/08_changelog.md)
+- [**未来计划（TODO）**](docs/09_future_plan.md)

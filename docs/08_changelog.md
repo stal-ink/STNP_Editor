@@ -1,5 +1,28 @@
 # 8. 变更记录
 
+## 0.9.1 — Notify 独占与运行时诊断
+
+材料：`docs/archive/v0.9.1/`（01–05）、现行 `docs/05_architecture/spec_0.9.1.md`。Wire 十槽与 `.stnp` options 键不变。
+
+### 破坏性变更
+
+- Notify 接收由「全局 + 模块并行」改为 **module XOR global**：模块认领后全局不再收同一帧。
+- `notify_dispatch_receive` 仍是冻结规范 §8.3 的整条接收分发总门（关闭时模块与全局都不投递）。0.9.1 不改该管辖范围。
+- Python 全局 `@stnp.on_notify` 不再收到 dataclass / `NotificationDescriptor`，只剩两种 raw 形。
+- Python 未知 target/cmd 不再 `raise ProtocolError` 计入 `callback_errors`；两闸都开时走 unknown `task`。
+
+### 新增
+
+- 未知 / 不可路由帧：同一回调 + 使能，两道闸默认关；SOF 另有第二开关默认关。C `STNP_UNKNOWN_NOTIFY` 枚举保留但 **不触发**。
+- Python `stnp.trace.debug` + `stnp.trace.format`（`config/trace.yaml`，`stnp.init()` → `trace.load()`）；payload `to_display()`。
+- C 预编译 `STNP_DEBUG` 0/1 断点宏（`STNP_BP_*`），只验证链路；golden 按 0 生成。
+- C `<Module>_NotifyCallbackIsEnabled`；Python SOF 猎寻改为逐字节滑动。
+
+### 明确不做（本版本）
+
+- C 全局 `STNP_Notify_Callback` 可空函数指针（留给 0.9.2）。
+- 日志子系统、`STNP_LOGx`、`on_log`、第三 SOF、`.stnp` options 新键。
+
 ## 0.9.0 — 配置拆分、统一报错与单目标生成
 
 材料交叉核对：`git log --oneline --reverse 0af4fa9..dca406d`（22 个提交）、`docs/archive/v0.9/0.9_规格变更清单.md`、冻结规范 `docs/05_architecture/spec_0.9.md`。
@@ -214,4 +237,4 @@
 
 ---
 
-[← 迁移指南](07_migration.md) | [文档目录](README.md) | [归档登记表 →](archive/README.md)
+[← 迁移指南](07_migration.md) | [文档目录](README.md) | [未来计划 →](09_future_plan.md)

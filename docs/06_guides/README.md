@@ -11,6 +11,7 @@
 | [构建系统](build_systems.md) | CMake / MDK-ARM、`stnp` 库与 INTERFACE_SOURCES |
 | [USER CODE](user_code.md) | 重新生成时保留 Includes / Private / 函数体 |
 | [用 Notify 打点](debugging_with_notify.md) | `STNP_Notify_Send()` 做临时路径确认 |
+| [链路验证](trace_and_breakpoints.md) | C `STNP_DEBUG` 与 Python `stnp.trace`（不叫日志） |
 
 ## Python 集成
 
@@ -26,7 +27,7 @@
 | 指南 | 一句话 |
 |---|---|
 | [多实例](multi_instance.md) | 一个 Module 多个 Instance；只用 `STNP_INSTANCE_*_ID` |
-| [CRC 与流式接收](crc_and_stream.md) | 生成期 CRC、1 字节滑动重同步 |
+| [CRC 与流式接收](crc_and_stream.md) | 生成期 CRC、1 字节滑动；unknown 默认关 |
 
 ---
 

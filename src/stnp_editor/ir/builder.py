@@ -721,6 +721,7 @@ def _build_module(
         notify_count_var=f"g_{snake}_notify_count", notify_dispatch_fn=f"{pascal}_NotifyDispatch",
         validator_typedef=f"{pascal}_ValidateCallback", validator_setter=f"{pascal}_SetValidate",
         notify_callback_fn=f"{pascal}_NotifyCallback", notify_callback_enable_fn=f"{pascal}_NotifyCallbackEnable",
+        notify_callback_is_enabled_fn=f"{pascal}_NotifyCallbackIsEnabled",
         on_task_fn=f"{pascal}_OnTask", enabled=enabled,
     )
 
@@ -800,6 +801,10 @@ def _validate_c_symbols(
         "STNP_Frame_ReserveSeq", "STNP_NotifyDispatchReceive_Enable",
         "STNP_NotifyDispatchReceive_Disable",
         "STNP_NotifyDispatchReceive_IsEnabled",
+        "STNP_Debug_Trap", "STNP_BpSite",
+        "STNP_UnknownFrame_SetCallback", "STNP_UnknownFrameCallback_Enable",
+        "STNP_UnknownFrameCallback_IsEnabled", "STNP_UnknownFrame_Report",
+        "STNP_UnknownReason", "STNP_UnknownFrameFn",
         # Public frame/platform macros.
         "STNP_PAYLOAD_MAX", "STNP_ROUTER_INSTANCE_MAX", "STNP_TASK_HEADER_SIZE",
         "STNP_NOTIFY_HEADER_SIZE", "STNP_TASK_FIXED_SIZE",
@@ -859,6 +864,7 @@ def _validate_c_symbols(
             (mod.on_task_fn, f"{name} task dispatch function"),
             (mod.validator_setter, f"{name} validator setter"),
             (mod.notify_callback_enable_fn, f"{name} notify callback enable function"),
+            (mod.notify_callback_is_enabled_fn, f"{name} notify callback is-enabled function"),
             (mod.notify_callback_fn, f"{name} notify callback function"),
             (mod.notify_dispatch_fn, f"{name} notify dispatch function"),
         ):

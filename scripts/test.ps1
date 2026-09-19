@@ -10,48 +10,56 @@
       2. Console output is forced to UTF-8 (no BOM) so the Chinese warning text
          stays valid UTF-8 when stdout is redirected into CI logs or pipes,
          regardless of the host code page.
-      3. The local toolchain directories are idempotently prepended to this
+      3. Toolchain resolution goes through the shared resolver
+         (`scripts/toolchain.ps1`, the twin of `tests/_toolchain.py`).  The order
+         is fixed and identical everywhere:
+
+             1. environment variable STNP_PYTHON / STNP_MINGW_BIN / STNP_CMAKE_BIN
+                                   optional override; SET but unusable -> loud error
+             2. PATH lookup          first match is adopted; all candidates listed
+             3. loud failure     one line of install guidance
+
+         The resolver detects and reports: a candidate must pass a minimal
+         usability check (`gcc -dumpmachine` runs, `cmake --version` runs, python
+         satisfies requires-python and imports stnp_editor), but whether the
+         adopted toolchain suits your target platform is yours to verify.  A
+         declared-but-unusable STNP_* value never falls back silently.
+      4. `gcc` / `cmake` are REQUIRED: when the resolver cannot find them the
+         script prints the resolver's guidance and exits 2.  Skipping silently was
+         the defect this replaced -- no toolchain must never look like success.
+      5. The resolved gcc / cmake directories are idempotently prepended to this
          process' PATH and CMAKE_GENERATOR is set to "MinGW Makefiles", so the
          tests that decide to skip on shutil.which("gcc"/"cmake") actually run
          (issue I-001: skipped tests hide defects).
-      4. The resolved gcc / cmake / mingw32-make are printed as proof; a tool
-         that does not resolve is reported with a loud warning.
-      5. Python interpreter resolution order:
-             -Python <path>
-             -> $env:STNP_PYTHON
-             -> known conda environment
-             -> `python` on PATH (its sys.executable)
-         Resolution failure exits 2.  When the interpreter's console-script
-         directory exists next to it -- its sibling `Scripts`, or the
-         interpreter's own directory when that directory is already named
-         `Scripts` (a venv) -- it is prepended the same way, so an installed
-         `stnpe` console script is discoverable without activating the
-         environment.
-      6. The FULL suite runs as `python -m pytest -q -rs` (never narrowed).
-      7. Skip accounting:
+      6. Python Scripts directory: when the interpreter's console-script directory
+         exists next to it -- its sibling `Scripts`, or the interpreter's own
+         directory when that directory is already named `Scripts` (a venv) -- it
+         is prepended the same way, so an installed `stnpe` console script is
+         discoverable without activating the environment.
+      7. The FULL suite runs as `python -m pytest -q -rs` (never narrowed).
+      8. Skip accounting:
          - The `-rs` short summary lines `SKIPPED [<n>] <location>: <reason>`
            are parsed into per-reason records.
          - A skip whose reason contains one of $ExpectedSkipReasonMarkers is a
            DESIGN skip: the test module itself declares it is an opt-in gate that
            is deliberately disabled in a default run.
-         - Every other skip is UNEXPECTED (an environment gap).
+         - Every other skip is UNEXPECTED (an environment gap).  Toolchain skips
+           ("gcc not available" / "cmake not available") never match the design
+           markers, so they are exactly what -FailOnSkip catches.
          - UNEXPECTED skips are the only thing reported as a problem: they get
            the loud WARNING banner, and each one is listed with location +
            reason.  Design skips get a one-line note instead; the skip detail
            list still shows both, so nothing is hidden.
-      8. Exit code:
+      9. Exit code:
          - the pytest exit code is passed through unchanged (highest priority);
          - else `-FailOnSkip` + unexpected > 0 -> exit 1;
          - else exit 0.  DESIGN skips never fail the run.
 
-    Optional toolchain-directory overrides (for machines/CI where the toolchains
-    live elsewhere; the defaults below are unchanged when the variables are
-    unset):
-        $env:STNP_MINGW_BIN   default E:\develop.environment.pack\mingw64\bin
-        $env:STNP_CMAKE_BIN   default E:\develop.environment.pack\CMake\bin
+    Toolchain overrides (optional; they are level 1 of the resolver, not defaults
+    baked into this file): $env:STNP_PYTHON, $env:STNP_MINGW_BIN,
+    $env:STNP_CMAKE_BIN.  When unset, the first match on PATH is adopted.
 
-.PARAMETER Python
-    Path to the Python interpreter that runs pytest.
+    Disclaimer: 工具链由本机环境决定，软件不保证其正确或匹配；请自行确认。
 
 .PARAMETER FailOnSkip
     Exit non-zero when pytest reports UNEXPECTED skipped tests (intended for
@@ -65,7 +73,6 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Python = "",
     [switch]$FailOnSkip
 )
 
@@ -78,7 +85,8 @@ $ErrorActionPreference = "Stop"
 # behaviour, not an environment gap.  Everything else is UNEXPECTED, and
 # UNEXPECTED skips are the only thing this script reports and fails on.
 # Keep this list deliberately short: it must only echo declarations made by the
-# tests themselves, never paper over missing tooling.
+# tests themselves, never paper over missing tooling.  The toolchain gates
+# ("gcc not available" / "cmake not available") deliberately do not match.
 # It mirrors the two keywords of conftest.py's _DESIGN_SKIP_NOTES.
 $ExpectedSkipReasonMarkers = @("STNP_TEST_EXE", "stnpe")
 
@@ -94,10 +102,6 @@ try {
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
-# --- Toolchain injection (idempotent) ---------------------------------------
-$MingwBin = if ($env:STNP_MINGW_BIN) { $env:STNP_MINGW_BIN } else { "E:\develop.environment.pack\mingw64\bin" }
-$CmakeBin = if ($env:STNP_CMAKE_BIN) { $env:STNP_CMAKE_BIN } else { "E:\develop.environment.pack\CMake\bin" }
-
 function Add-PathFront {
     param([string]$Directory)
     $normalized = $Directory.TrimEnd('\')
@@ -110,86 +114,32 @@ function Add-PathFront {
     return $true
 }
 
+# --- Shared toolchain resolver (S2/S3) --------------------------------------
+. (Join-Path $PSScriptRoot "toolchain.ps1")
+
 Write-Host "== STNP Editor full test run =="
 Write-Host ("repo root : {0}" -f $RepoRoot)
 Write-Host ("cwd       : {0}" -f (Get-Location).Path)
+Write-StnpToolchainDisclaimer
 Write-Host ""
 
-Write-Host "toolchain injection:"
-foreach ($directory in @($MingwBin, $CmakeBin)) {
-    if (Test-Path -LiteralPath $directory) {
-        $added = Add-PathFront -Directory $directory
-        $state = if ($added) { "prepended to PATH" } else { "already in PATH" }
-        Write-Host ("  [ok]      {0} ({1})" -f $directory, $state)
-    } else {
-        Write-Host ("  [MISSING] {0}" -f $directory) -ForegroundColor Yellow
-    }
-}
-$env:CMAKE_GENERATOR = "MinGW Makefiles"
-Write-Host ("  [env]     CMAKE_GENERATOR = {0}" -f $env:CMAKE_GENERATOR)
-Write-Host ""
-
-Write-Host "toolchain resolution proof:"
-$missingTools = New-Object System.Collections.ArrayList
-foreach ($tool in @("gcc", "cmake", "mingw32-make")) {
-    $command = Get-Command $tool -ErrorAction SilentlyContinue
-    if ($command) {
-        Write-Host ("  {0,-13} -> {1}" -f $tool, $command.Source)
-    } else {
-        Write-Host ("  {0,-13} -> NOT FOUND" -f $tool) -ForegroundColor Yellow
-        [void]$missingTools.Add($tool)
-    }
-}
-if ($missingTools.Count -gt 0) {
-    Write-Host ""
-    Write-Host ("WARNING: toolchain command(s) not resolved: {0}" -f ($missingTools -join ", ")) -ForegroundColor Yellow
-    Write-Host "         tests that need them will be SKIPPED; the suite result will be incomplete" -ForegroundColor Yellow
-}
-Write-Host ""
-
-# --- Python interpreter resolution ------------------------------------------
-$KnownCondaPython = "E:\develop.environment.pack\anaconda3\envs\STNP_EDITOR_ENV_py3.12\python.exe"
-$PythonExe = $null
-$PythonSource = $null
-
-if ($Python) {
-    $PythonExe = $Python
-    $PythonSource = "-Python parameter"
-} elseif ($env:STNP_PYTHON) {
-    $PythonExe = $env:STNP_PYTHON
-    $PythonSource = "STNP_PYTHON environment variable"
-} elseif (Test-Path -LiteralPath $KnownCondaPython) {
-    $PythonExe = $KnownCondaPython
-    $PythonSource = "known conda environment"
-} else {
-    $onPath = Get-Command python -ErrorAction SilentlyContinue
-    if ($onPath) {
-        $PythonExe = & $onPath.Source -c "import sys; print(sys.executable)"
-        $PythonSource = "python on PATH (sys.executable)"
-    }
-}
-
-if (-not $PythonExe) {
-    Write-Host "ERROR: no Python interpreter found (-Python, STNP_PYTHON, known conda env, PATH)" -ForegroundColor Red
+# --- Python interpreter (resolver level 1 env override -> level 2 PATH) -------
+$ResolvedPython = $null
+try {
+    $ResolvedPython = Resolve-StnpPython
+} catch {
+    Write-Host ("ERROR: {0}" -f $_.Exception.Message) -ForegroundColor Red
     exit 2
 }
-if (-not (Test-Path -LiteralPath $PythonExe)) {
-    Write-Host ("ERROR: Python interpreter does not exist: {0} (from {1})" -f $PythonExe, $PythonSource) -ForegroundColor Red
-    exit 2
+$PythonExe = $ResolvedPython.Path
+Write-Host (Format-StnpToolLine -Resolved $ResolvedPython)
+$otherPython = @(Get-StnpOtherCandidates -Resolved $ResolvedPython)
+if ($otherPython.Count -gt 0) {
+    Write-Host ("其它候选：{0}" -f ($otherPython -join "; "))
 }
-$PythonVersion = & $PythonExe -c "import sys; print(sys.version.split()[0])"
-if ($LASTEXITCODE -ne 0 -or -not $PythonVersion) {
-    Write-Host ("ERROR: Python interpreter failed to run: {0}" -f $PythonExe) -ForegroundColor Red
-    exit 2
-}
-Write-Host ("python    : {0} ({1}, from {2})" -f $PythonExe, $PythonVersion.Trim(), $PythonSource)
 
 # Make an installed `stnpe` console script discoverable without activating the
-# environment: prepend the directory that holds the interpreter's console
-# scripts (idempotent; silently skipped when it does not exist).  For a normal
-# installation that is the sibling `Scripts` directory; for a venv the
-# interpreter already lives inside `Scripts`, so appending another `Scripts`
-# would look for `<venv>\Scripts\Scripts` and never find `stnpe`.
+# environment (see the .DESCRIPTION note about the interpreter's Scripts dir).
 $PythonDir = Split-Path -Parent $PythonExe
 if ($PythonDir) {
     $ScriptsDir = if ((Split-Path -Leaf $PythonDir) -eq "Scripts") {
@@ -202,6 +152,52 @@ if ($PythonDir) {
         $state = if ($added) { "prepended to PATH" } else { "already in PATH" }
         Write-Host ("scripts   : {0} ({1})" -f $ScriptsDir, $state)
     }
+}
+Write-Host ""
+
+# --- gcc / cmake are required (D7: no silent skips) --------------------------
+$missingToolchain = New-Object System.Collections.ArrayList
+$ResolvedGcc = $null
+$ResolvedCmake = $null
+try {
+    $ResolvedGcc = Resolve-StnpGcc
+} catch {
+    Write-Host ("ERROR: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    [void]$missingToolchain.Add("gcc")
+}
+try {
+    $ResolvedCmake = Resolve-StnpCmake
+} catch {
+    Write-Host ("ERROR: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    [void]$missingToolchain.Add("cmake")
+}
+if ($missingToolchain.Count -gt 0) {
+    Write-Host ""
+    Write-Host ("ERROR: required toolchain missing: {0}" -f ($missingToolchain -join ", ")) -ForegroundColor Red
+    Write-Host "       the full suite cannot run; fix PATH or use STNP_MINGW_BIN / STNP_CMAKE_BIN" -ForegroundColor Red
+    exit 2
+}
+
+$env:CMAKE_GENERATOR = "MinGW Makefiles"
+Write-Host "toolchain:"
+foreach ($resolved in @($ResolvedGcc, $ResolvedCmake)) {
+    $added = Add-PathFront -Directory $resolved.Directory
+    $state = if ($added) { "prepended to PATH" } else { "already in PATH" }
+    Write-Host ("  " + (Format-StnpToolLine -Resolved $resolved))
+    Write-Host ("  [{0}] {1}" -f $state, $resolved.Directory)
+    $others = @(Get-StnpOtherCandidates -Resolved $resolved)
+    if ($others.Count -gt 0) {
+        Write-Host ("  其它候选：{0}" -f ($others -join "; "))
+    }
+}
+Write-Host ("  [env]     CMAKE_GENERATOR = {0}" -f $env:CMAKE_GENERATOR)
+
+# mingw32-make is not resolved by the shared resolver; it is reported and a
+# missing one is a warning (cmake --build with MinGW Makefiles will report it).
+if (-not (Get-Command mingw32-make -ErrorAction SilentlyContinue)) {
+    Write-Host "  [warn]    mingw32-make -> NOT FOUND (cmake builds may fail)" -ForegroundColor Yellow
+} else {
+    Write-Host ("  [ok]      mingw32-make -> {0}" -f (Get-Command mingw32-make).Source)
 }
 Write-Host ""
 
@@ -307,7 +303,7 @@ if ($skipCount -gt 0) {
         Write-Host ("#  WARNING: {0} UNEXPECTED test(s) were SKIPPED and did NOT actually run." -f $unexpectedCount) -ForegroundColor Yellow
         Write-Host "#  非设计跳过：有测试未真正执行，结论不可信。" -ForegroundColor Yellow
         Write-Host "#  Remedy for the unexpected skips listed above:" -ForegroundColor Yellow
-        Write-Host "#    - toolchain      : make gcc / cmake / mingw32-make visible (see resolution above)" -ForegroundColor Yellow
+        Write-Host "#    - toolchain      : make gcc / cmake visible (see resolver guidance above)" -ForegroundColor Yellow
         Write-Host '#    - console script : python -m pip install -e ".[dev]" with the selected interpreter' -ForegroundColor Yellow
         if ($expectedCount -gt 0) {
             Write-Host ("#  design (declared opt-in) skips, not counted as unexpected: {0}" -f $expectedCount) -ForegroundColor Yellow

@@ -21,7 +21,7 @@ stnpe version
 - 最终工程文件夹名为 `{output_stem}_{layout.output_dir_names[target]}`，默认后缀 `STNP_C` / `STNP_Python`。
 - 源码树内等价：`python main.py generate ...`。
 
-字段细节见 [3. JSON 与生成配置](03_json_format.md)。从 0.8.x 迁过来见 [7. 迁移指南](07_migration.md)。
+字段细节见 [3. JSON 与生成配置](03_json_format.md)。从 0.9.0 迁过来见 [7. 迁移指南](07_migration.md) §7.0；从 0.8.x 迁过来见同页 §7.1。
 
 ## 环境准备
 
@@ -43,7 +43,36 @@ python -m pip install -e ".[dev]"
 
 两者都要求 `git` 在 PATH 上；私有仓库用 `git+https://<token>@github.com/stal-ink/STNP_Editor.git`。
 
-最小 C 示例还需要 `gcc` 与 `objcopy`（`handshake_c/run.ps1` 用 `Get-Command` 查找；找不到会以非 0 退出并提示）。Python UART 路径另需发行包 `pyserial`（不是只 `import serial`）。
+### 工具链解析顺序
+
+仓库不捆绑编译器。`scripts/test.ps1`、`scripts/build_exe.ps1` 与 `examples/*/run.ps1` 共用同一套解析顺序（`scripts/toolchain.ps1` 与 `tests/_toolchain.py` 是同一顺序的两个实现，一致性由 `tests/test_toolchain.py` 锁定）：
+
+1. **环境变量**（可选覆盖）：`STNP_PYTHON` / `STNP_MINGW_BIN` / `STNP_CMAKE_BIN` / `STNP_GIT` —— 值不可用时直接报错，不回退；
+2. **`PATH` 查找**：取第一个命中并采用，同时列出其余全部候选；
+3. **明确失败**：打印一行安装指引并非 0 退出。
+
+解析器只做"按顺序查找 + 最低可用性校验 + 来源打印"：候选要能运行并通过最低检查（`gcc -dumpmachine` 可执行、`cmake --version` 可执行且不低于最低版本、python 版本符合 `requires-python` 且能 `import stnp_editor`），但**采用哪个工具、它是否适合你的目标平台，由你自行确认**。每次运行都打印实际使用的工具：`工具 : <路径> (from <来源>, <版本/三元组>)`。
+
+`pytest` 由根 `conftest.py` 自举：把解析到的 gcc / cmake 目录前置到 `PATH`，并设置 `CMAKE_GENERATOR=MinGW Makefiles`；找不到就只报警告，不伪造路径，相关用例随之 skip 并被 `scripts/test.ps1 -FailOnSkip` 判为**非预期**。
+
+### 工具链不在标准位置时
+
+仓库内**不保存任何机器路径**。若你的编译器不在 `PATH` 上，做一次**用户级声明**（之后新开的 shell 都生效）：
+
+```powershell
+setx STNP_MINGW_BIN "<你的 MinGW-w64 bin 目录>"
+setx STNP_CMAKE_BIN "<你的 CMake bin 目录>"
+setx STNP_PYTHON    "<你的 Python 解释器路径>"
+setx STNP_GIT       "<你的 git 可执行文件路径>"
+```
+
+也可只对当前会话生效：`$env:STNP_MINGW_BIN = "<...>"`。
+
+**不声明会怎样**：`PATH` 上也没有时，解析器明确报错并打印安装指引（脚本非 0 退出；`pytest` 侧的相关用例 skip 会被 `-FailOnSkip` 判为非预期）。**不做任何静默回退。**
+
+最小 C 示例还需要 `gcc` 与 `objcopy`（同样走上面的解析顺序；找不到会以非 0 退出并提示）。Python UART 路径另需发行包 `pyserial`（不是只 `import serial`）。
+
+> 工具链由本机环境决定，软件不保证其正确或匹配；请自行确认。
 
 ## 最小 C 示例（`examples/handshake_c`）
 

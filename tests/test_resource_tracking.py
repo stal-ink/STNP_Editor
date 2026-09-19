@@ -17,40 +17,33 @@ to the repository root; these tests keep them anchored:
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from _toolchain import ToolchainError, resolve_git
+
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = ROOT / "src" / "stnp_editor" / "resources"
 RESOURCES_REL = "src/stnp_editor/resources"
-
-# Resolution order (same as the F1 batch): PATH first, then the known install location
-# of this machine (git is deliberately not on PATH), then the common Windows defaults.
-_GIT_CANDIDATES = (
-    Path(r"E:\assistant.software.pack\Git\cmd\git.exe"),
-    Path(r"C:\Program Files\Git\cmd\git.exe"),
-    Path(r"C:\Program Files (x86)\Git\cmd\git.exe"),
-)
 
 _git_cache: str | None = None
 
 
 def _git_exe() -> str:
-    """Resolve a git executable; skip (with reason) only if none can be found."""
+    """Resolve git through the shared resolver (PATH first, then generic probes).
+
+    No machine-specific path is stored here: the resolver owns the candidate list
+    and its failure text, and a missing git stays an environment gap (an
+    UNEXPECTED skip that ``scripts/test.ps1 -FailOnSkip`` reports).
+    """
     global _git_cache
     if _git_cache is None:
-        found = shutil.which("git")
-        if not found:
-            found = next((str(p) for p in _GIT_CANDIDATES if p.is_file()), None)
-        _git_cache = found
-    if _git_cache is None:
-        pytest.skip(
-            "git executable not found: not on PATH and no candidate at "
-            + ", ".join(str(p) for p in _GIT_CANDIDATES)
-        )
+        try:
+            _git_cache = str(resolve_git().path)
+        except ToolchainError as exc:
+            pytest.skip(str(exc))
     return _git_cache
 
 

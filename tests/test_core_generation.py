@@ -26,6 +26,7 @@ removed in 0.9:
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tomllib
@@ -109,7 +110,7 @@ def test_product_version_matches_pyproject() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert version
     assert len(version.split(".")) == 3
-    # 0.9.0: __version__ is the single source.  pyproject.toml declares the
+    # 0.9.1: __version__ is the single source.  pyproject.toml declares the
     # version dynamic and asks setuptools to read it from the package
     # attribute, so there is exactly one literal to bump.
     assert project["project"]["dynamic"] == ["version"]
@@ -117,3 +118,8 @@ def test_product_version_matches_pyproject() -> None:
     assert project["tool"]["setuptools"]["dynamic"]["version"] == {
         "attr": "stnp_editor.__version__"
     }
+    # The packaged-exe harness must DERIVE that version, not repeat it: a literal
+    # copy is how 0.9.1 shipped expecting 0.9.0 and turned the Packaging CI leg red.
+    verify_exe = (ROOT / "scripts" / "verify_exe.ps1").read_text(encoding="utf-8")
+    literals = re.findall(r'"\d+\.\d+\.\d+"', verify_exe)
+    assert not literals, f"scripts/verify_exe.ps1 must not hardcode a version: {literals}"

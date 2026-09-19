@@ -74,12 +74,12 @@ C 的 typed 发送走 `STNP_Task_Send` / `STNP_Notify_Send`（内部 `STNP_Route
 
 ## Stream 重同步
 
-流式接收在缓冲区内寻找 Task / Notify 两个 2 字节 SOF 中更靠前的一个。缓冲不足 2 字节时等待；没有任何 SOF 且缓冲多于 1 字节时只保留末字节继续。CRC 或结构错误、以及 `LEN > max_payload` 时一律 **1 字节滑动** 重同步，避免按错误候选帧的推测长度整段丢弃、从而吞掉嵌套有效帧。
+流式接收只认 **Task / Notify 两个** 2 字节协议 SOF，**没有**第三 SOF、诊断信封或 parser「跳过 log 信封」。缓冲不足 2 字节时等待。不是协议 SOF 则每次丢掉恰好 1 字节再继续（C `_try_complete_frame` 与 Python `StreamParser.feed` 对齐；Python **禁止** `del buffer[:-1]` 整段丢掉前缀）。CRC 或结构错误、以及 `LEN > max_payload` 时一律 **1 字节滑动** 重同步，避免按错误候选帧的推测长度整段丢弃、从而吞掉嵌套有效帧。未知帧用户回调默认关，见 [C 运行时](05_architecture/c_runtime.md) / [Python 运行时](05_architecture/python_runtime.md)。
 
 C 与 Python 的推进粒度不同，规则相同：
 
 - C：`STNP_Transport_Receive()` 只把字节整块复制进 RX Ring（放不下则 `STNP_ERR_BUFFER`，不做部分写入）。`STNP_Process()` 从 Ring 逐字节填入解析缓冲，单次调用至多推进一帧；Job 满时返回 `STNP_ERR_BUFFER` 并保留当前完整帧待重试。
-- Python：`StreamParser.feed()` 把新字节追加到内部 `bytearray`，一次调用可吐出多帧，但仍按同一 SOF/滑动规则。CRC 失败计入 `crc_errors`，结构失败计入 `protocol_errors`。
+- Python：`StreamParser.feed()` 把新字节追加到内部 `bytearray`，一次调用可吐出多帧。SOF 每次只滑 1 字节。CRC 失败计入 `crc_errors`，结构失败计入 `protocol_errors`。`ParseError` 不入 Dispatcher。
 
 不要假设一次 UART 回调正好一帧。半帧等待更多字节；粘包一次可产出多帧。
 

@@ -11,6 +11,8 @@
 #define __STNP_H
 
 #include "stnp_core.h"
+#include "stnp_debug.h"
+#include "stnp_unknown.h"
 #include "stnp_frame.h"
 #include "stnp_task.h"
 #include "stnp_notify.h"

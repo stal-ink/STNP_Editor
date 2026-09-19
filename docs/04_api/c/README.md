@@ -20,12 +20,12 @@
 
 | 分类 | 文档 | 主要接口 |
 |---|---|---|
-| Core / Transport | [core.md](core.md) | `STNP_Init`、`STNP_Transport_Receive`、`STNP_Process`、`STNP_Dispatch`、`STNP_Transport_Write` |
+| Core / Transport | [core.md](core.md) | `STNP_Init`、`STNP_Transport_Receive`、`STNP_Process`、`STNP_Dispatch`、`STNP_Transport_Write`、未知帧两道闸 |
 | Task | [task.md](task.md) | `STNP_Task_Send`、`STNP_Task_SendBytes`、`STNP_Task_SendBytes_Impl` |
-| Notify | [notify.md](notify.md) | `STNP_Notify_Send`、`STNP_Notify_SendBytes`、接收分发运行时开关 |
-| Module | [module.md](module.md) | `<Module>_Init`、`<Module>_SetValidate`、`<Module>_ValidateGenerated`、业务函数、Notify callback |
+| Notify | [notify.md](notify.md) | `STNP_Notify_Send`、`STNP_Notify_SendBytes`、独占接收分发 |
+| Module | [module.md](module.md) | `<Module>_Init`、`<Module>_SetValidate`、`<Module>_ValidateGenerated`、业务函数、Notify callback、`NotifyCallbackIsEnabled` |
 | Router / VTL | [router_vtl.md](router_vtl.md) | `STNP_Router_Register`、`STNP_VTL_Encode` / `Decode` |
-| Platform / CRC | [platform.md](platform.md) | 固定宽度类型、宏、Codec、`STNP_CRC16` |
+| Platform / CRC | [platform.md](platform.md) | 固定宽度类型、宏、Codec、`STNP_CRC16`、**仅** `STNP_DEBUG` 0/1 |
 | SDK / STM32 HAL UART | [sdk_stm32_hal_uart.md](sdk_stm32_hal_uart.md) | `STNP_HAL_UART_Init`、RX/TX/Error 桥 |
 | SDK / FreeRTOS | [sdk_freertos.md](sdk_freertos.md) | `STNP_FreeRTOS_Start`、`NotifyRx` / `NotifyRxFromISR` |
 

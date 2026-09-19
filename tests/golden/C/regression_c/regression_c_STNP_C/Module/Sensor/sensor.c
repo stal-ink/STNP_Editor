@@ -7,6 +7,7 @@
 
 #include "sensor.h"
 #include "../../Core/stnp_notify.h"
+#include "../../Core/stnp_debug.h"
 #include "../../Core/stnp_vtl.h"
 
 static Sensor_ValidateCallback g_validate_calibrate = STNP_NULL;
@@ -83,6 +84,11 @@ void Sensor_NotifyCallbackEnable(STNP_EnableState state)
     g_notify_callback_enabled = state;
 }
 
+STNP_U8 Sensor_NotifyCallbackIsEnabled(void)
+{
+    return (STNP_U8)(g_notify_callback_enabled == STNP_ENABLE);
+}
+
 STNP_Result Sensor_OnTask(SensorHandle *self, STNP_U8 cmd, const STNP_U8 *payload, STNP_U8 len)
 {
     const STNP_VTL_Desc *desc = STNP_VTL_Find(
@@ -94,6 +100,7 @@ STNP_Result Sensor_OnTask(SensorHandle *self, STNP_U8 cmd, const STNP_U8 *payloa
     {
         return STNP_ERR_PARAM;
     }
+    STNP_BP_ON_TASK();
     if (desc == STNP_NULL)
     {
         return STNP_ERR_COMMAND;

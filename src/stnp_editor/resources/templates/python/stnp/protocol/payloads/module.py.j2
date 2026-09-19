@@ -6,10 +6,18 @@ from dataclasses import dataclass
 class {{ cmd.pascal }}Payload:
 {% for f in cmd.fields %}    {{ f.name }}: int
 {% endfor %}
+    def to_display(self) -> str:
+        return " ".join((
+{% for f in cmd.fields %}            f"{{ f.name }}={self.{{ f.name }}}",
+{% endfor %}        ))
 
 {% endif %}{% endfor %}{% for n in m.notifications %}{% if n.fields %}@dataclass(frozen=True, slots=True)
 class {{ n.pascal }}NotifyPayload:
 {% for f in n.fields %}    {{ f.name }}: int
 {% endfor %}
+    def to_display(self) -> str:
+        return " ".join((
+{% for f in n.fields %}            f"{{ f.name }}={self.{{ f.name }}}",
+{% endfor %}        ))
 
 {% endif %}{% endfor %}

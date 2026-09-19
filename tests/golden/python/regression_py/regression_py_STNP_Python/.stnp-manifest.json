@@ -22,6 +22,10 @@
       "kind": "generated"
     },
     {
+      "path": "config/trace.yaml",
+      "kind": "generated"
+    },
+    {
       "path": "pyproject.toml",
       "kind": "generated"
     },
@@ -63,6 +67,10 @@
     },
     {
       "path": "stnp/core/stats.py",
+      "kind": "generated"
+    },
+    {
+      "path": "stnp/core/trace.py",
       "kind": "generated"
     },
     {

@@ -6,6 +6,7 @@
  */
 
 #include "stnp_runtime.h"
+#include "stnp_debug.h"
 #include "stnp_notify.h"
 
 #define STNP_RUNTIME_INDEX_NONE 0xFFU
@@ -100,6 +101,7 @@ static STNP_Result _enqueue(
         g_ready_tail = index;
     }
     STNP_Runtime_Unlock(state);
+    STNP_BP_ENQUEUE();
     return STNP_OK;
 }
 
@@ -133,6 +135,7 @@ STNP_Result STNP_Runtime_EnqueueTask(
 
     if (result != STNP_OK)
     {
+        STNP_BP_ROUTE_FAIL();
         return result;
     }
     return _enqueue(
@@ -228,6 +231,7 @@ STNP_Result STNP_Runtime_DispatchOne(void)
         return STNP_IDLE;
     }
 
+    STNP_BP_DISPATCH();
     if (job.type == (STNP_U8)STNP_RUNTIME_JOB_TASK)
     {
         result = job.module->ops->task_handler(

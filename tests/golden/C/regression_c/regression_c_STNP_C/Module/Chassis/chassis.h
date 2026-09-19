@@ -76,6 +76,7 @@ Chassis_Result Chassis_ValidateGenerated(
 
 /* Module-level Notify callback. One callback per Module, optional at runtime. */
 void Chassis_NotifyCallbackEnable(STNP_EnableState state);
+STNP_U8 Chassis_NotifyCallbackIsEnabled(void);
 void Chassis_NotifyCallback(
     ChassisHandle *self,
     STNP_U8 notify_code,

@@ -19,7 +19,7 @@ target emitter（模板 + USER CODE merge + manifest）
         Python：stnp.core / stnp.sdk / stnp.protocol）
 ```
 
-冻结规范规定分层模型与 wire 槽位，见 [spec_0.9.md](spec_0.9.md)。
+冻结规范规定分层模型与 wire 槽位，见 [spec_0.9.md](spec_0.9.md)。0.9.1 运行时增量（Notify 独占、未知帧两道闸、`STNP_DEBUG`、`stnp.trace`）见 [spec_0.9.1.md](spec_0.9.1.md)。
 
 ## 核心原则
 
@@ -34,9 +34,10 @@ target emitter（模板 + USER CODE merge + manifest）
 | 文档 | 内容 |
 |---|---|
 | [冻结规范 spec_0.9.md](spec_0.9.md) | STNP 0.9 权威目标态（规范正文不改写） |
+| [0.9.1 delta spec_0.9.1.md](spec_0.9.1.md) | Notify 独占、DR 管辖范围澄清、未知帧两道闸、trace、断点宏、工具链统一化（附 A） |
 | [生成器 generator.md](generator.md) | Schema/IR、单目标分派、安全写出、诊断与退出码 |
-| [C 运行时 c_runtime.md](c_runtime.md) | Transport → Process → Dispatch；裸机与 FreeRTOS |
-| [Python 运行时 python_runtime.md](python_runtime.md) | 双线程、TaskSet、校验顺序、异常隔离 |
+| [C 运行时 c_runtime.md](c_runtime.md) | Transport → Process → Dispatch；独占 Notify；未知帧；裸机与 FreeRTOS |
+| [Python 运行时 python_runtime.md](python_runtime.md) | 双线程、独占 Notify、decode→validate→format.maybe→func、trace.debug |
 
 ---
 

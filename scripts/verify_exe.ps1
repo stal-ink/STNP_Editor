@@ -39,14 +39,26 @@ $GoldenC = Join-Path $RepoRoot "tests\golden\C\regression_c\regression_c_STNP_C"
 $GoldenPython = Join-Path $RepoRoot "tests\golden\python\regression_py\regression_py_STNP_Python"
 $SettingsPy = Join-Path $RepoRoot "src\stnp_editor\settings.py"
 $BundledConfig = Join-Path $RepoRoot "src\stnp_editor\resources\config.json"
-$ExpectedVersion = "0.9.0"
+$VersionSource = Join-Path $RepoRoot "src\stnp_editor\__init__.py"
 
-foreach ($required in @($ExeSource, $SettingsPy, $BundledConfig, $FixtureC, $FixturePython, $GoldenC, $GoldenPython)) {
+foreach ($required in @($ExeSource, $SettingsPy, $BundledConfig, $VersionSource, $FixtureC, $FixturePython, $GoldenC, $GoldenPython)) {
     if (-not (Test-Path -LiteralPath $required)) {
         Write-Host ("FAIL: missing required path: {0}" -f $required) -ForegroundColor Red
         exit 2
     }
 }
+
+# Derived, never repeated: `stnp_editor.__version__` is the single literal
+# (pyproject.toml reads it via `dynamic`).  A hardcoded copy here is how 0.9.1
+# once shipped expecting 0.9.0; tests/test_core_generation.py now guards it.
+$versionMatch = [regex]::Match(
+    (Get-Content -LiteralPath $VersionSource -Raw -Encoding UTF8),
+    '__version__\s*=\s*"([^"]+)"')
+if (-not $versionMatch.Success) {
+    Write-Host ("FAIL: cannot read __version__ from {0}" -f $VersionSource) -ForegroundColor Red
+    exit 2
+}
+$ExpectedVersion = $versionMatch.Groups[1].Value
 
 # --- Stage the exe + fixtures in a clean temp directory ---------------------
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("stnpe_verify_" + [guid]::NewGuid().ToString("N"))

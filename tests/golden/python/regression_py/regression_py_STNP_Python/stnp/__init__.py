@@ -6,10 +6,11 @@ from pathlib import Path
 import yaml
 
 from .core import InstanceDefinition, NotifySpec, Runtime, TaskSpec
+from .core import trace
 from .protocol import PROTOCOL, REGISTRY
 from . import sdk
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 _runtime = Runtime(PROTOCOL, REGISTRY)
 
@@ -34,6 +35,7 @@ def _runtime_config(path: str | Path | None = None) -> dict:
 
 
 def init(transport=None, *, port=None, baudrate=None, config=None, queue_size=None, warn_missing=None):
+    trace.load()
     cfg = _runtime_config(config)
     runtime_cfg = dict(cfg.get("runtime") or {})
     if transport is None:
@@ -54,6 +56,22 @@ def shutdown() -> None:
 
 def on_notify(fn):
     return _runtime.on_notify(fn)
+
+
+def on_unknown_frame(fn):
+    return _runtime.on_unknown_frame(fn)
+
+
+def unknown_frame_callback_enable() -> None:
+    _runtime.unknown_frame_callback_enable()
+
+
+def unknown_frame_callback_disable() -> None:
+    _runtime.unknown_frame_callback_disable()
+
+
+def unknown_frame_callback_is_enabled() -> bool:
+    return _runtime.unknown_frame_callback_is_enabled()
 
 
 def check_implementations():
@@ -140,6 +158,11 @@ __all__ = [
     "init",
     "shutdown",
     "on_notify",
+    "on_unknown_frame",
+    "unknown_frame_callback_enable",
+    "unknown_frame_callback_disable",
+    "unknown_frame_callback_is_enabled",
+    "trace",
     "check_implementations",
     "task",
     "notify",

@@ -3,9 +3,10 @@
  * @file    stnp_notify_callback.c
  * @brief   Optional raw fallback Notify callback.
  *
- * Known configured instances are normally handled by generated typed callbacks.
- * This fallback is for unconfigured/advanced raw handling and is a no-op by
- * default. Re-generation preserves the USER CODE regions.
+ * Known notify codes claimed by a module with NotifyCallbackIsEnabled do not
+ * enter this fallback. Unclaimed frames (unknown instance/code, or module
+ * enable off) still reach this function. Re-generation preserves the USER
+ * CODE regions.
  ******************************************************************************
  */
 

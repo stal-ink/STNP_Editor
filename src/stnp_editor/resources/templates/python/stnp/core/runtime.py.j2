@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from .codec import decode_payload, encode_payload
 from .dispatch import Dispatcher
 from .errors import ConfigurationError, ProtocolError, TransportError
-from .frame import NotifyFrame, StreamParser, TaskFrame, build_notify, build_task
+from .frame import NotifyFrame, ParseError, StreamParser, TaskFrame, build_notify, build_task
 from .model import CommandDescriptor, InstanceDefinition, NotificationDescriptor, NotifySpec, TaskSpec
 from .stats import RuntimeStats
 from .transport import Transport
+from .trace import debug as trace_debug, format as trace_format
+from .trace import TraceCmd
 
 LOG = logging.getLogger("stnp")
 
@@ -32,6 +34,9 @@ class Runtime:
         self._rx_thread: threading.Thread | None = None
         self._dispatcher: Dispatcher | None = None
         self._notify_callback: Callable[..., object] | None = None
+        self._unknown_callback: Callable | None = None
+        self._unknown_enabled: bool = False
+        self.unknown_report_sof: bool = False
         self._parser: StreamParser | None = None
         self._bind_registry_runtime()
 
@@ -93,6 +98,28 @@ class Runtime:
         self._notify_callback = fn
         return fn
 
+    def on_unknown_frame(self, fn):
+        self._unknown_callback = fn
+        return fn
+
+    def unknown_frame_callback_enable(self) -> None:
+        self._unknown_enabled = True
+
+    def unknown_frame_callback_disable(self) -> None:
+        self._unknown_enabled = False
+
+    def unknown_frame_callback_is_enabled(self) -> bool:
+        return self._unknown_enabled
+
+    def _report_unknown(self, reason: str, data: bytes) -> None:
+        if (not self._unknown_enabled) or (self._unknown_callback is None):
+            return
+        try:
+            self._unknown_callback(reason, data)
+        except Exception:
+            LOG.exception("STNP unknown-frame callback failed")
+            return
+
     def check_implementations(self) -> list[str]:
         missing: list[str] = []
         for module in self.registry.modules.values():
@@ -130,6 +157,7 @@ class Runtime:
             raise TransportError("stnp.init() has not configured a transport")
         raw = b"".join(frames)
         with self._write_lock:
+            trace_debug.bp("transport_write")
             written = int(self.transport.write(raw))
         if written != len(raw):
             raise TransportError(f"short transport write: {written}/{len(raw)}")
@@ -144,6 +172,7 @@ class Runtime:
                 self._seq = 0 if self._seq == 0xFFFF else self._seq + 1
                 if self._seq not in self.protocol.seq_reserved:
                     break
+            trace_debug.bp("seq_reserve")
             return current
 
     def _build_task_spec(self, spec: TaskSpec) -> bytes:
@@ -198,16 +227,26 @@ class Runtime:
                 return
             if not chunk:
                 continue
+            trace_debug.bp("rx_read")
             self.stats.rx_bytes += len(chunk)
+            parser.report_sof = self.unknown_report_sof
             frames = parser.feed(chunk)
             self.stats.crc_errors += parser.crc_errors
             self.stats.protocol_errors += parser.protocol_errors
             parser.crc_errors = 0
             parser.protocol_errors = 0
             for frame in frames:
+                if isinstance(frame, ParseError):
+                    if frame.reason in ("len", "crc"):
+                        trace_debug.bp("parse_resync")
+                    self._report_unknown(frame.reason, frame.data)
+                    continue
+                trace_debug.bp("parse_ok")
                 self.stats.rx_frames += 1
                 if self._dispatcher is None or not self._dispatcher.put(frame):
                     self.stats.dropped_frames += 1
+                else:
+                    trace_debug.bp("enqueue")
 
     def _dispatch_frame(self, frame) -> None:
         try:
@@ -220,12 +259,17 @@ class Runtime:
             LOG.exception("STNP dispatch callback failed")
 
     def _dispatch_task(self, frame: TaskFrame) -> None:
+        trace_debug.bp("dispatch")
         instance = self.registry.instances_by_id.get(frame.target)
         if instance is None:
-            raise ProtocolError(f"unknown target instance 0x{frame.target:02X}")
+            if frame.raw:
+                self._report_unknown("task", frame.raw)
+            return
         command = instance.module.cmd.by_code(frame.code)
         if command is None:
-            raise ProtocolError(f"unknown command 0x{frame.code:02X} for {instance.module.name}")
+            if frame.raw:
+                self._report_unknown("task", frame.raw)
+            return
         payload = decode_payload(command, frame.payload)
         if command.validate_hook:
             validator = command._validate.resolve(instance.id)
@@ -237,10 +281,14 @@ class Runtime:
                 result = instance.module.OK
             if int(result) != int(instance.module.OK):
                 return
+        cmd = TraceCmd(kind="task", path=f"{instance.module.name}.{command.name}",
+                       owner=instance.name, instance=instance, descriptor=command)
+        trace_format.maybe(cmd, payload)
         fn = command._func.resolve(instance.id)
         if fn is None:
             LOG.warning("received unimplemented command %s.%s on %s", instance.module.name, command.name, instance.name)
             return
+        trace_debug.bp("on_task")
         if payload is None:
             fn(instance)
         else:
@@ -249,23 +297,58 @@ class Runtime:
     def _dispatch_notify(self, frame: NotifyFrame) -> None:
         if not self.notify_dispatch_receive_is_enabled():
             return
+        trace_debug.bp("dispatch")
         instance = self.registry.instances_by_id.get(frame.source)
-        if instance is None:
-            if self._notify_callback is not None:
-                self._notify_callback(frame.source, frame.notify_code, frame.result, frame.payload)
-            return
-        notification = instance.module.notify.by_code(frame.notify_code)
-        if notification is None:
-            if self._notify_callback is not None:
-                self._notify_callback(instance, frame.notify_code, frame.result, frame.payload)
-            return
-        payload = decode_payload(notification, frame.payload)
-        result = instance.module.result(frame.result)
-        fn = notification._func.resolve(instance.id)
+        notification = None
+        fn = None
+        if instance is not None:
+            notification = instance.module.notify.by_code(frame.notify_code)
+            if notification is not None:
+                fn = notification._func.resolve(instance.id)
+
         if fn is not None:
+            payload = decode_payload(notification, frame.payload)
+            result = instance.module.result(frame.result)
+            cmd = TraceCmd(
+                kind="notify",
+                path=f"{instance.module.name}.{notification.name}",
+                owner=instance.name,
+                instance=instance,
+                descriptor=notification,
+                result=result,
+            )
+            trace_format.maybe(cmd, payload)
+            trace_debug.bp("on_notify")
             if payload is None:
                 fn(instance, result)
             else:
                 fn(instance, result, payload)
+            return
+
         if self._notify_callback is not None:
-            self._notify_callback(instance, notification, result, payload)
+            if instance is not None and notification is not None:
+                path = f"{instance.module.name}.{notification.name}"
+            elif instance is not None:
+                path = f"{instance.module.name}.0x{frame.notify_code:02X}"
+            else:
+                path = f"0x{frame.notify_code:02X}"
+            cmd = TraceCmd(
+                kind="notify",
+                path=path,
+                owner=(instance.name if instance is not None else f"0x{frame.source:02X}"),
+                instance=instance,
+                descriptor=None,
+                result=(instance.module.result(frame.result) if instance is not None else None),
+            )
+            trace_format.maybe(cmd, frame.payload)
+            trace_debug.bp("on_notify")
+            if instance is None:
+                self._notify_callback(frame.source, frame.notify_code, frame.result, frame.payload)
+            else:
+                self._notify_callback(instance, frame.notify_code, frame.result, frame.payload)
+            return
+
+        data = frame.raw if frame.raw else (
+            bytes((frame.source, frame.notify_code)) + frame.result.to_bytes(2, "little") + frame.payload
+        )
+        self._report_unknown("notify", data)

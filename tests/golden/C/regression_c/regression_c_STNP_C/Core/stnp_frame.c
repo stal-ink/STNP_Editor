@@ -8,6 +8,7 @@
  */
 
 #include "stnp_frame.h"
+#include "stnp_debug.h"
 #include "stnp_codec.h"
 
 static STNP_U16 _crc_extra(void)

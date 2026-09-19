@@ -27,7 +27,7 @@ Core 不绑定 UART，也不 include FreeRTOS。介质适配在 SDK 或用户 `S
 
 ## `STNP_Transport_Receive` 只做有界复制
 
-不 Parse、不 Router、不 Decode、不调用 Handler。实现是 SPSC Ring：生产者拥有 `tail`，`Process` 拥有 `head`。整块能放下才提交 `tail`；放不下返回 `STNP_ERR_BUFFER`，不做部分写入。适合 UART RX IRQ：中断里只拷贝字节。`data` 为 `STNP_NULL` 且 `length > 0` 时返回 `STNP_ERR_PARAM`。
+不 Parse、不 Router、不 Decode、不调用 Handler。实现是 SPSC Ring：生产者拥有 `tail`，`Process` 拥有 `head`。整块能放下才提交 `tail`；放不下返回 `STNP_ERR_BUFFER`，不做部分写入。适合 UART RX IRQ：中断里只拷贝字节。`data` 为 `STNP_NULL` 且 `length > 0` 时返回 `STNP_ERR_PARAM`。`STNP_DEBUG=1` 时，成功发布 `tail` 之后可打一次 `STNP_BP_RX_COPY`；禁止在此解析、回调或构帧发送。
 
 `STNP_Transport_Write` 把已构好的帧交给 `STNP_Init` 时登记的写出函数；尚未 `Init` 时返回 `STNP_ERR_STATE`。
 
@@ -36,12 +36,12 @@ Core 不绑定 UART，也不 include FreeRTOS。介质适配在 SDK 或用户 `S
 `STNP_Process()` 从 RX Ring 逐字节填入 `g_parse_buf`，再尝试完整帧：
 
 1. 缓冲不足 2 字节则 `STNP_IDLE`。
-2. 当前两字节既不是 Task SOF 也不是 Notify SOF 则滑动 1 字节继续。
+2. 当前两字节既不是 Task SOF 也不是 Notify SOF 则滑动 1 字节继续（仅当 `STNP_UNKNOWN_REPORT_SOF=1` 且两闸都开时才 Report 那 1 字节）。
 3. 头未齐则 `STNP_IDLE` 等待。
-4. `LEN > STNP_PAYLOAD_MAX`：滑动 1 字节，返回 `STNP_ERR_LENGTH`。
+4. `LEN > STNP_PAYLOAD_MAX`：两闸都开时 Report `STNP_UNKNOWN_LEN`，滑动 1 字节，返回 `STNP_ERR_LENGTH`。
 5. 帧未齐则 `STNP_IDLE`。
-6. `STNP_Frame_ParseTask` / `ParseNotify` 失败（含 CRC）：滑动 1 字节并返回该错误，让下次 `Process` 有机会从嵌套 SOF 恢复。
-7. 入队成功则从解析缓冲移走整帧并返回；Job 满返回 `STNP_ERR_BUFFER` **且不滑动**，当前完整帧保留待重试。
+6. `STNP_Frame_ParseTask` / `ParseNotify` 失败（含 CRC）：shift 前 Report `STNP_UNKNOWN_CRC`，滑动 1 字节并返回该错误，让下次 `Process` 有机会从嵌套 SOF 恢复。
+7. 入队成功则从解析缓冲移走整帧并返回；Job 满返回 `STNP_ERR_BUFFER` **且不滑动**，当前完整帧保留待重试。不可路由 Task（非 BUFFER）在 shift 前 Report `STNP_UNKNOWN_TASK`。
 
 单次调用最多把一个完整帧送进 Job Queue。解析缓冲涨满时也会滑动 1 字节并返回 `STNP_ERR_LENGTH`。
 
@@ -91,11 +91,26 @@ RX IRQ → RX Ring → Protocol Task（单执行者 Process）
 
 Core 不 include FreeRTOS。官方 SDK 用 `xTaskCreateStatic` 建 1 个 Protocol Task 与 Worker Pool。Protocol Task 是解析的单执行者；Worker 并发 `STNP_Dispatch()`，仍受 active-key 约束。详见 [FreeRTOS 指南](../06_guides/freertos.md)。
 
-## Notify 接收分发开关
+## Notify 接收分发：独占（module XOR global）
 
-`protocol.options.notify_dispatch_receive.enabled` 给出初值，写入 `stnp_notify.c` 的 `g_notify_dispatch_receive`。运行时用 `STNP_NotifyDispatchReceive_Enable` / `Disable` / `IsEnabled` 门控。
+`protocol.options.notify_dispatch_receive.enabled` 给出初值，写入 `stnp_notify.c` 的 `g_notify_dispatch_receive`。运行时用 `STNP_NotifyDispatchReceive_Enable` / `Disable` / `IsEnabled` 切换。该开关门控**整条 Notify 接收分发路径**：关闭时模块认领与全局 fallback 都不触发；帧仍解析并入队，发送与 wire 不受影响。
 
-门控点在生成的 `STNP_Notify_Dispatch`（`Instance/stnp_instances.c`）：先始终调用 weak `STNP_Notify_Callback`（全局兜底），仅当开关开启时才按 `SOURCE` 把帧交给对应 Module 的 `<Module>_NotifyDispatch`。关闭后本端仍解析并入队 Notify Job，但不进入 Module callback。不改 wire 格式，也不影响发送。
+门控点在生成的 `STNP_Notify_Dispatch`（`Instance/stnp_instances.c`）。0.9.1 是 **独占**：模块认领后禁止再调全局 `STNP_Notify_Callback`。
+
+1. DR **关闭**：`STNP_Notify_Dispatch` 直接返回，不认领、不调全局。
+2. DR 开启、`source` 命中已登记 Instance、且 `<Module>_NotifyCallbackIsEnabled() != 0` 时，才调用 `<Module>_NotifyDispatch`。
+3. `NotifyDispatch` 返回值不是 `STNP_ERR_COMMAND`（已知码，含 Decode 失败）→ 独占结束，禁止全局。仅 `STNP_OK` 时打一次 `STNP_BP_ON_NOTIFY`。
+4. DR 开且未知码（返回 `STNP_ERR_COMMAND`）、模块未 Enable、或未知 SOURCE → 落入全局 `STNP_Notify_Callback`（生成工程里 Core weak 空实现 + Implementation 强符号，恒可调用）。**没有** `STNP_Notify_CallbackEnable`。
+
+只把「全局/模块对调顺序」不等于独占：`NotifyDispatch` 在 enable 关闭且码已知时仍返回 `STNP_OK`，因此必须在调用它 **之前** 检查 `IsEnabled`。
+
+## 未知帧回调（两道闸，默认关）
+
+`STNP_UnknownFrame_SetCallback` 与 `STNP_UnknownFrameCallback_Enable` 都要；缺一则真零调用。默认不上报。SOF 另有预编译 `STNP_UNKNOWN_REPORT_SOF`（默认 0），不是主开关。`STNP_UNKNOWN_NOTIFY` 枚举保留，C 0.9.1 **禁止触发**（全局恒可调用，独占链末端不存在「无人认领」）。不可路由 Task 在 `_try_complete_frame` 里 `EnqueueTask` 失败且不是 `STNP_ERR_BUFFER` 时、shift **之前** Report；队列满禁止 Report、禁止 shift。Parser 仍只认两个协议 SOF，没有第三 SOF / 日志 skip。
+
+## `STNP_DEBUG` 断点宏
+
+预编译 `STNP_DEBUG` 仅允许 0/1，默认 0。宏只验证链路站点，不是日志。详见 [链路验证](../06_guides/trace_and_breakpoints.md)。
 
 ---
 

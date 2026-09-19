@@ -27,6 +27,7 @@ items = []
 
 - `stnp/protocol/protocol.yaml`：Editor 生成的协议事实源；不要用于运行时调参。
 - `config/stnp.yaml`：用户运行时设置。
+- `config/trace.yaml`：`stnp.init()` → `trace.load()`；默认关。读 YAML 依赖 PyYAML（已写入本目录 `pyproject.toml`）。
 {% if 'uart' in sdks %}- `stnp/sdk/uart/uart.yaml`：用户 UART/pyserial 设置。
 {% endif %}
 {% if pycfg.get('emit_examples') or (pycfg.get('python') or {}).get('emit_examples') %}

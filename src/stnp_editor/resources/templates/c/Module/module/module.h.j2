@@ -108,6 +108,7 @@ void {{ m.validator_setter }}(STNP_U8 cmd, {{ m.validator_typedef }} fn);
 
 /* Module-level Notify callback. One callback per Module, optional at runtime. */
 void {{ m.notify_callback_enable_fn }}(STNP_EnableState state);
+STNP_U8 {{ m.pascal }}_NotifyCallbackIsEnabled(void);
 void {{ m.notify_callback_fn }}(
     {{ m.handle_type }} *self,
     STNP_U8 notify_code,

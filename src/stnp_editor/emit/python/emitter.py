@@ -44,9 +44,10 @@ def emit_python(ir: ProjectIR, output: Path, build: dict, *, template_root: Path
 
     add("pyproject.toml", "pyproject.toml.j2")
     add("config/stnp.yaml", "config/stnp.yaml.j2")
+    add("config/trace.yaml", "config/trace.yaml.j2")
     add("stnp/__init__.py", "stnp/__init__.py.j2")
     add("stnp/core/__init__.py", "stnp/core/__init__.py.j2")
-    for name in ("errors.py", "transport.py", "codec.py", "crc.py", "frame.py", "model.py", "dispatch.py", "stats.py", "runtime.py"):
+    for name in ("errors.py", "transport.py", "codec.py", "crc.py", "frame.py", "model.py", "dispatch.py", "stats.py", "runtime.py", "trace.py"):
         add(f"stnp/core/{name}", f"stnp/core/{name}.j2")
     add("stnp/sdk/__init__.py", "stnp/sdk/__init__.py.j2")
 

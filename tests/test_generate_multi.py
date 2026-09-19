@@ -59,10 +59,17 @@ def _auto_notify_ir(module_name: str = "CHASSIS"):
     return build_project_from_data(raw, _build_data(), source_path=DEMO)
 
 
-def _compile(out: Path, *, main: Path | None = None) -> Path:
+def _compile(
+    out: Path,
+    *,
+    main: Path | None = None,
+    extra_cflags: list[str] | None = None,
+    extra_sources: list[str] | None = None,
+    exe_name: str = "stnp_test",
+) -> Path:
     if shutil.which("gcc") is None:
         pytest.skip("gcc not available")
-    exe = out / "stnp_test"
+    exe = out / exe_name
     sources = []
     for pattern in ("Core/*.c", "Module/*.c", "Module/*/*.c", "Instance/*.c", "Implementation/*.c"):
         sources.extend(str(p) for p in sorted(out.glob(pattern)))
@@ -71,8 +78,10 @@ def _compile(out: Path, *, main: Path | None = None) -> Path:
     else:
         sources.append(str(out / "Examples" / "transport_mock.c"))
         sources.append(str(main))
+    if extra_sources:
+        sources.extend(extra_sources)
     subprocess.run(
-        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-I.", *sources, "-o", str(exe)],
+        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-I.", *(extra_cflags or []), *sources, "-o", str(exe)],
         cwd=out, check=True, capture_output=True, text=True,
     )
     return exe
@@ -190,6 +199,7 @@ def test_generate_typed_shape(tmp_path: Path):
     assert "Sensor_NotifySend" not in sensor_h
     assert "Sensor_DataPack" not in sensor_h
     assert "Sensor_NotifyCallback(" in sensor_h
+    assert "Sensor_NotifyCallbackIsEnabled(" in sensor_h
     assert "SetContext" not in chassis_h + instance_h
     assert "STNP_SensorFront_NotifyData" not in instance_h
     assert "STNP_SensorFront_Task" not in instance_h
@@ -1951,8 +1961,11 @@ int main(void)
     sources.append(str(harness))
     sources.append(str(_write_harness_link_stubs(out)))
     exe = out / "dispatch_concurrency_test"
+    # -static removes the libwinpthread-1.dll runtime dependency, so the exe runs
+    # from any cwd without a PATH patch (S1/D6).  The pre-test PATH prepend lived
+    # here; conftest.py now owns toolchain PATH bootstrapping (S4/D5).
     subprocess.run(
-        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-pthread", "-I.", *sources, "-o", str(exe)],
+        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-pthread", "-static", "-I.", *sources, "-o", str(exe)],
         cwd=out, check=True, capture_output=True, text=True,
     )
     subprocess.run([str(exe)], cwd=out, check=True)
@@ -2018,6 +2031,13 @@ int main(void)
     if ((STNP_Init(TransportMock_Write) != STNP_OK) ||
         (STNP_Instances_Init() != STNP_OK)) return 1;
 
+    STNP_NotifyDispatchReceive_Disable();
+    if (STNP_Notify_Send(STNP_INSTANCE_SENSORFRONT_ID, SENSOR_NOTIFY_DATA, SENSOR_OK, &p) != STNP_OK) return 20;
+    if (STNP_Process() != STNP_OK) return 21;
+    if (STNP_Dispatch() != STNP_OK) return 22;
+    if (g_raw_count != 0U || g_typed_count != 0U) return 23;
+    STNP_NotifyDispatchReceive_Enable();
+
     /* Typed callback is disabled by default; raw callback still must be deferred. */
     if (STNP_Notify_Send(STNP_INSTANCE_SENSORFRONT_ID, SENSOR_NOTIFY_DATA, SENSOR_OK, &p) != STNP_OK) return 2;
     if (g_raw_count != 0U || g_typed_count != 0U) return 3;
@@ -2032,7 +2052,7 @@ int main(void)
     if (STNP_Process() != STNP_OK) return 9;
     if (g_raw_count != 1U || g_typed_count != 0U) return 10;
     if (STNP_Dispatch() != STNP_OK) return 11;
-    return (g_raw_count == 2U && g_typed_count == 1U && g_value == 0xBEEFU) ? 0 : 12;
+    return (g_raw_count == 1U && g_typed_count == 1U && g_value == 0xBEEFU) ? 0 : 12;
 }
 ''', encoding="utf-8")
     if shutil.which("gcc") is None:
@@ -2154,6 +2174,8 @@ def test_cmake_build_system_emits_and_manifest_tracks_file(tmp_path: Path):
     text = cmake.read_text(encoding="utf-8")
     assert "add_library(stnp STATIC" in text
     assert '${CMAKE_CURRENT_LIST_DIR}/Core/stnp_core.c' in text
+    assert '${CMAKE_CURRENT_LIST_DIR}/Core/stnp_debug.c' in text
+    assert '${CMAKE_CURRENT_LIST_DIR}/Core/stnp_unknown.c' in text
     assert "${CMAKE_SOURCE_DIR}" not in text
     assert "target_compile_features" not in text
     assert "C_STANDARD 99" in text
@@ -2262,3 +2284,610 @@ def test_cmake_lists_selected_freertos_sdk_source(tmp_path: Path):
 def test_auto_notify_rejects_payload_bearing_done_mapping():
     with pytest.raises(StnpError, match="零载荷通知"):
         _auto_notify_ir("SENSOR")
+
+
+def _write_debug_trap_stub(out: Path) -> Path:
+    stub = out / "debug_trap_stub.c"
+    stub.write_text(
+        '#include "Core/stnp.h"\n'
+        "void STNP_Debug_Trap(STNP_BpSite site)\n"
+        "{\n"
+        "    STNP_UNUSED(site);\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    return stub
+
+
+def test_stnp_debug_compiles_off_and_on_without_bkpt(tmp_path: Path):
+    out = emit_c(load_project(DEMO, BUILD), tmp_path, _build_data())
+    assert (out / "Core" / "stnp_debug.h").is_file()
+    assert (out / "Core" / "stnp_debug.c").is_file()
+    platform_cfg = (out / "Platform" / "stnp_platform_config.h").read_text(encoding="utf-8")
+    assert "#define STNP_DEBUG 1" not in platform_cfg
+    header = (out / "Core" / "stnp.h").read_text(encoding="utf-8")
+    assert '#include "stnp_debug.h"' in header
+    for path in out.rglob("*.c"):
+        if path.name in {"stnp_debug.c"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert "STNP_Debug_Trap" not in text, path
+        assert "STNP_LOGE" not in text
+        assert "STNP_LOG" not in text
+    _compile(out, exe_name="stnp_debug_off")
+    stub = _write_debug_trap_stub(out)
+    _compile(
+        out,
+        extra_cflags=["-DSTNP_DEBUG=1"],
+        extra_sources=[str(stub)],
+        exe_name="stnp_debug_on",
+    )
+
+
+def test_stnp_debug_legal_task_resync_and_sof_sites(tmp_path: Path):
+    out = emit_c(load_project(DEMO, BUILD), tmp_path, _build_data())
+    harness = out / "debug_sites_harness.c"
+    harness.write_text(r'''#include "Core/stnp.h"
+#include "Instance/stnp_instances.h"
+
+#define STNP_BP_MAX_HITS 64U
+static STNP_BpSite g_hits[STNP_BP_MAX_HITS];
+static STNP_U16 g_hit_n = 0U;
+
+void STNP_Debug_Trap(STNP_BpSite site)
+{
+    if (g_hit_n < STNP_BP_MAX_HITS)
+    {
+        g_hits[g_hit_n++] = site;
+    }
+}
+
+static STNP_Result DummyWrite(const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_UNUSED(data);
+    STNP_UNUSED(length);
+    return STNP_OK;
+}
+
+static void reset_hits(void)
+{
+    g_hit_n = 0U;
+}
+
+static STNP_U16 count_site(STNP_BpSite site)
+{
+    STNP_U16 i;
+    STNP_U16 n = 0U;
+    for (i = 0U; i < g_hit_n; i++)
+    {
+        if (g_hits[i] == site)
+        {
+            n++;
+        }
+    }
+    return n;
+}
+
+int main(void)
+{
+    STNP_TaskFrame frame;
+    STNP_U8 raw[STNP_TASK_FIXED_SIZE + STNP_PAYLOAD_MAX + STNP_CRC_SIZE];
+    STNP_U16 raw_len = 0U;
+    STNP_U8 oversized[5];
+    STNP_U8 noise[4];
+    static const STNP_BpSite expect[] = {
+        STNP_BP_SITE_RX_COPY,
+        STNP_BP_SITE_PROCESS_ENTER,
+        STNP_BP_SITE_PARSE_OK,
+        STNP_BP_SITE_ENQUEUE,
+        STNP_BP_SITE_DISPATCH,
+        STNP_BP_SITE_ON_TASK
+    };
+    STNP_U16 i;
+
+    if ((STNP_Init(DummyWrite) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 1;
+    frame.target = STNP_INSTANCE_CHASSISMAIN_ID;
+    frame.code = CHASSIS_CMD_STOP;
+    frame.length = 0U;
+    if (STNP_Frame_BuildTask(&frame, raw, (STNP_U16)sizeof(raw), &raw_len) != STNP_OK) return 2;
+    reset_hits();
+    if (STNP_Transport_Receive(raw, raw_len) != STNP_OK) return 3;
+    if (STNP_Process() != STNP_OK) return 4;
+    if (STNP_Dispatch() != STNP_OK) return 5;
+    if (g_hit_n != (STNP_U16)(sizeof(expect) / sizeof(expect[0]))) return 6;
+    for (i = 0U; i < g_hit_n; i++)
+    {
+        if (g_hits[i] != expect[i]) return 7;
+    }
+
+    if (STNP_Init(DummyWrite) != STNP_OK) return 8;
+    oversized[0] = STNP_TASK_HEADER0;
+    oversized[1] = STNP_TASK_HEADER1;
+    oversized[2] = STNP_INSTANCE_CHASSISMAIN_ID;
+    oversized[3] = CHASSIS_CMD_STOP;
+    oversized[4] = (STNP_U8)(STNP_PAYLOAD_MAX + 1U);
+    reset_hits();
+    if (STNP_Transport_Receive(oversized, 5U) != STNP_OK) return 9;
+    if (STNP_Process() != STNP_ERR_LENGTH) return 10;
+    if (count_site(STNP_BP_SITE_PROCESS_ENTER) == 0U) return 11;
+    if (count_site(STNP_BP_SITE_PARSE_RESYNC) != 1U) return 12;
+    if (count_site(STNP_BP_SITE_PARSE_OK) != 0U) return 13;
+    if (count_site(STNP_BP_SITE_ON_TASK) != 0U) return 14;
+
+    if (STNP_Init(DummyWrite) != STNP_OK) return 15;
+    noise[0] = 0x00U; noise[1] = 0x01U; noise[2] = 0x02U; noise[3] = 0x03U;
+    reset_hits();
+    if (STNP_Transport_Receive(noise, 4U) != STNP_OK) return 16;
+    if (STNP_Process() != STNP_IDLE) return 17;
+    if (count_site(STNP_BP_SITE_PARSE_RESYNC) != 0U) return 18;
+    return 0;
+}
+''', encoding="utf-8")
+    exe = _compile(out, main=harness, extra_cflags=["-DSTNP_DEBUG=1"], exe_name="debug_sites_test")
+    subprocess.run([str(exe)], cwd=out, check=True)
+
+
+def test_stnp_debug_on_notify_exclusive_once(tmp_path: Path):
+    out = emit_c(load_project(DEMO, BUILD), tmp_path, _build_data())
+    harness = out / "debug_on_notify_harness.c"
+    harness.write_text(r'''#include "Core/stnp.h"
+#include "Instance/stnp_instances.h"
+#include "Examples/transport_mock.h"
+
+#define STNP_BP_MAX_HITS 64U
+static STNP_BpSite g_hits[STNP_BP_MAX_HITS];
+static STNP_U16 g_hit_n = 0U;
+
+void STNP_Debug_Trap(STNP_BpSite site)
+{
+    if (g_hit_n < STNP_BP_MAX_HITS)
+    {
+        g_hits[g_hit_n++] = site;
+    }
+}
+
+void STNP_Notify_Callback(
+    STNP_U8 source,
+    STNP_U8 notify_code,
+    STNP_U16 result,
+    const STNP_U8 *payload,
+    STNP_U8 length)
+{
+    STNP_UNUSED(source); STNP_UNUSED(notify_code); STNP_UNUSED(result);
+    STNP_UNUSED(payload); STNP_UNUSED(length);
+}
+
+void Sensor_NotifyCallback(
+    SensorHandle *self,
+    STNP_U8 notify_code,
+    Sensor_Result result,
+    const void *payload)
+{
+    STNP_UNUSED(self); STNP_UNUSED(notify_code); STNP_UNUSED(result);
+    STNP_UNUSED(payload);
+}
+
+static STNP_U16 count_site(STNP_BpSite site)
+{
+    STNP_U16 i;
+    STNP_U16 n = 0U;
+    for (i = 0U; i < g_hit_n; i++)
+    {
+        if (g_hits[i] == site)
+        {
+            n++;
+        }
+    }
+    return n;
+}
+
+int main(void)
+{
+    Sensor_DataPayload p = {0xBEEFU};
+    STNP_U16 i;
+
+    if ((STNP_Init(TransportMock_Write) != STNP_OK) ||
+        (STNP_Instances_Init() != STNP_OK)) return 1;
+    Sensor_NotifyCallbackEnable(STNP_ENABLE);
+    if (STNP_Notify_Send(STNP_INSTANCE_SENSORFRONT_ID, SENSOR_NOTIFY_DATA, SENSOR_OK, &p) != STNP_OK) return 2;
+    if (STNP_Process() != STNP_OK) return 3;
+    g_hit_n = 0U;
+    if (STNP_Dispatch() != STNP_OK) return 4;
+    if (count_site(STNP_BP_SITE_ON_NOTIFY) != 1U) return 5;
+    for (i = 0U; i < g_hit_n; i++)
+    {
+        if (g_hits[i] == STNP_BP_SITE_ON_NOTIFY)
+        {
+            break;
+        }
+    }
+    return 0;
+}
+''', encoding="utf-8")
+    if shutil.which("gcc") is None:
+        pytest.skip("gcc not available")
+    sources = []
+    for pattern in ("Core/*.c", "Module/*.c", "Module/*/*.c", "Instance/*.c"):
+        sources.extend(str(p) for p in sorted(out.glob(pattern)))
+    sources.extend([str(out / "Examples" / "transport_mock.c"), str(harness)])
+    sources.append(str(_write_harness_link_stubs(out, raw_callback=False)))
+    exe = out / "debug_on_notify_test"
+    subprocess.run(
+        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-I.", "-DSTNP_DEBUG=1", *sources, "-o", str(exe)],
+        cwd=out, check=True, capture_output=True, text=True,
+    )
+    subprocess.run([str(exe)], cwd=out, check=True)
+
+
+def test_unknown_frame_c_01_02_04_05_07_08(tmp_path: Path):
+    out = emit_c(load_project(DEMO, BUILD), tmp_path, _build_data())
+    harness = out / "unknown_frame_harness.c"
+    harness.write_text(r'''#include "Core/stnp.h"
+#include "Instance/stnp_instances.h"
+#include "Examples/transport_mock.h"
+
+static STNP_UnknownReason g_reasons[32];
+static STNP_U16 g_lengths[32];
+static STNP_U8 g_n = 0U;
+static STNP_U8 g_raw = 0U;
+static STNP_U8 g_typed = 0U;
+static STNP_U8 g_notify_reason = 0U;
+
+static void OnUnknown(STNP_UnknownReason reason, const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_UNUSED(data);
+    if (reason == STNP_UNKNOWN_NOTIFY)
+    {
+        g_notify_reason++;
+    }
+    if (g_n < 32U)
+    {
+        g_reasons[g_n] = reason;
+        g_lengths[g_n] = length;
+        g_n++;
+    }
+}
+
+void STNP_Notify_Callback(
+    STNP_U8 source,
+    STNP_U8 notify_code,
+    STNP_U16 result,
+    const STNP_U8 *payload,
+    STNP_U8 length)
+{
+    STNP_UNUSED(source); STNP_UNUSED(notify_code); STNP_UNUSED(result);
+    STNP_UNUSED(payload); STNP_UNUSED(length);
+    g_raw++;
+}
+
+void Sensor_NotifyCallback(
+    SensorHandle *self,
+    STNP_U8 notify_code,
+    Sensor_Result result,
+    const void *payload)
+{
+    STNP_UNUSED(self); STNP_UNUSED(notify_code); STNP_UNUSED(result);
+    STNP_UNUSED(payload);
+    g_typed++;
+}
+
+static STNP_U8 count_reason(STNP_UnknownReason reason)
+{
+    STNP_U8 i;
+    STNP_U8 n = 0U;
+    for (i = 0U; i < g_n; i++)
+    {
+        if (g_reasons[i] == reason)
+        {
+            n++;
+        }
+    }
+    return n;
+}
+
+static STNP_Result DummyWrite(const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_UNUSED(data);
+    STNP_UNUSED(length);
+    return STNP_OK;
+}
+
+static void fill_len_fail(STNP_U8 *buf)
+{
+    STNP_U16 i;
+    for (i = 0U; i < STNP_TASK_FIXED_SIZE; i++)
+    {
+        buf[i] = 0U;
+    }
+    buf[0] = STNP_TASK_HEADER0;
+    buf[1] = STNP_TASK_HEADER1;
+    buf[STNP_TASK_FIXED_SIZE - 1U] = (STNP_U8)(STNP_PAYLOAD_MAX + 1U);
+}
+
+int main(void)
+{
+    STNP_U8 len_fail[STNP_TASK_FIXED_SIZE];
+    STNP_TaskFrame task;
+    STNP_U8 raw[STNP_TASK_FIXED_SIZE + STNP_PAYLOAD_MAX + STNP_CRC_SIZE];
+    STNP_U16 raw_len = 0U;
+    STNP_U8 noise[8];
+    STNP_U8 i;
+
+    fill_len_fail(len_fail);
+
+    /* 1: default — callback registered but not enabled */
+    if ((STNP_Init(DummyWrite) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 1;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    if (STNP_UnknownFrameCallback_IsEnabled() != 0U) return 2;
+    g_n = 0U;
+    if (STNP_Transport_Receive(len_fail, STNP_TASK_FIXED_SIZE) != STNP_OK) return 3;
+    if (STNP_Process() != STNP_ERR_LENGTH) return 4;
+    if (STNP_Init(DummyWrite) != STNP_OK) return 5;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    task.target = 0x09U;
+    task.code = CHASSIS_CMD_STOP;
+    task.length = 0U;
+    if (STNP_Frame_BuildTask(&task, raw, (STNP_U16)sizeof(raw), &raw_len) != STNP_OK) return 5;
+    if (STNP_Transport_Receive(raw, raw_len) != STNP_OK) return 6;
+    if (STNP_Process() != STNP_ERR_TARGET) return 7;
+    if (g_n != 0U) return 8;
+
+    /* 2: enable without set */
+    if (STNP_Init(DummyWrite) != STNP_OK) return 9;
+    STNP_UnknownFrame_SetCallback(STNP_NULL);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    if (STNP_Transport_Receive(len_fail, STNP_TASK_FIXED_SIZE) != STNP_OK) return 10;
+    if (STNP_Process() != STNP_ERR_LENGTH) return 11;
+    if (g_n != 0U) return 12;
+
+    /* 2b: set without enable */
+    if (STNP_Init(DummyWrite) != STNP_OK) return 13;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_DISABLE);
+    g_n = 0U;
+    if (STNP_Transport_Receive(len_fail, STNP_TASK_FIXED_SIZE) != STNP_OK) return 14;
+    if (STNP_Process() != STNP_ERR_LENGTH) return 15;
+    if (g_n != 0U) return 16;
+
+    /* enable + LEN */
+    if (STNP_Init(DummyWrite) != STNP_OK) return 17;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    if (STNP_Transport_Receive(len_fail, STNP_TASK_FIXED_SIZE) != STNP_OK) return 18;
+    if (STNP_Process() != STNP_ERR_LENGTH) return 19;
+    if (count_reason(STNP_UNKNOWN_LEN) != 1U) return 20;
+    if (g_lengths[0] != STNP_TASK_FIXED_SIZE) return 21;
+
+    /* 4: enable + unknown TARGET; not enqueued */
+    if (STNP_Init(DummyWrite) != STNP_OK) return 22;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    if (STNP_Transport_Receive(raw, raw_len) != STNP_OK) return 17;
+    if (STNP_Process() != STNP_ERR_TARGET) return 18;
+    if (count_reason(STNP_UNKNOWN_TASK) != 1U) return 19;
+    if (g_lengths[0] != raw_len) return 20;
+    if (STNP_Dispatch() != STNP_IDLE) return 21;
+
+    /* 4b: job full — no Report, no shift */
+    if ((STNP_Init(TransportMock_Write) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 22;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    for (i = 0U; i < (STNP_U8)(STNP_JOB_QUEUE_DEPTH + 1U); i++)
+    {
+        if (STNP_Task_Send(STNP_INSTANCE_CHASSISMAIN_ID, CHASSIS_CMD_STOP, STNP_NULL) != STNP_OK) return 23;
+    }
+    for (i = 0U; i < (STNP_U8)STNP_JOB_QUEUE_DEPTH; i++)
+    {
+        if (STNP_Process() != STNP_OK) return 24;
+    }
+    if (count_reason(STNP_UNKNOWN_TASK) != 0U) return 25;
+    if (STNP_Process() != STNP_ERR_BUFFER) return 26;
+    if (g_n != 0U) return 27;
+    if (STNP_Process() != STNP_ERR_BUFFER) return 28;
+
+    /* 5: SOF default off even with two-gate */
+    if (STNP_Init(DummyWrite) != STNP_OK) return 29;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    for (i = 0U; i < 8U; i++) noise[i] = (STNP_U8)i;
+    if (STNP_Transport_Receive(noise, 8U) != STNP_OK) return 30;
+    if (STNP_Process() != STNP_IDLE) return 31;
+    if (count_reason(STNP_UNKNOWN_SOF) != 0U) return 32;
+
+    /* 8: legal task/notify do not enter unknown */
+    if ((STNP_Init(TransportMock_Write) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 33;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    g_raw = 0U;
+    g_typed = 0U;
+    if (STNP_Task_Send(STNP_INSTANCE_CHASSISMAIN_ID, CHASSIS_CMD_STOP, STNP_NULL) != STNP_OK) return 34;
+    if (STNP_Process() != STNP_OK) return 35;
+    if (STNP_Dispatch() != STNP_OK) return 36;
+    Sensor_NotifyCallbackEnable(STNP_ENABLE);
+    {
+        Sensor_DataPayload p = {0xBEEFU};
+        if (STNP_Notify_Send(STNP_INSTANCE_SENSORFRONT_ID, SENSOR_NOTIFY_DATA, SENSOR_OK, &p) != STNP_OK) return 37;
+    }
+    if (STNP_Process() != STNP_OK) return 38;
+    if (STNP_Dispatch() != STNP_OK) return 39;
+    if (g_n != 0U) return 40;
+    if (g_typed != 1U) return 41;
+
+    /* 7: unknown notify_code, module not claimed → global only, unknown 0 */
+    if ((STNP_Init(TransportMock_Write) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 42;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    g_n = 0U;
+    g_raw = 0U;
+    g_typed = 0U;
+    g_notify_reason = 0U;
+    if (STNP_Notify_SendBytes(STNP_INSTANCE_SENSORFRONT_ID, 0x7FU, SENSOR_OK, STNP_NULL) != STNP_OK) return 43;
+    if (STNP_Process() != STNP_OK) return 44;
+    if (STNP_Dispatch() != STNP_OK) return 45;
+    if (g_raw != 1U) return 46;
+    if (g_typed != 0U) return 47;
+    if (g_n != 0U) return 48;
+    if (g_notify_reason != 0U) return 49;
+    return 0;
+}
+''', encoding="utf-8")
+    if shutil.which("gcc") is None:
+        pytest.skip("gcc not available")
+    sources = []
+    for pattern in ("Core/*.c", "Module/*.c", "Module/*/*.c", "Instance/*.c"):
+        sources.extend(str(p) for p in sorted(out.glob(pattern)))
+    sources.extend([str(out / "Examples" / "transport_mock.c"), str(harness)])
+    sources.append(str(_write_harness_link_stubs(out, raw_callback=False)))
+    exe = out / "unknown_frame_test"
+    subprocess.run(
+        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-I.", *sources, "-o", str(exe)],
+        cwd=out, check=True, capture_output=True, text=True,
+    )
+    subprocess.run([str(exe)], cwd=out, check=True)
+
+
+def test_unknown_frame_c_03_crc_nested(tmp_path: Path):
+    raw = json.loads(DEMO.read_text(encoding="utf-8"))
+    raw["protocol"]["features"]["crc"]["enabled"] = True
+    project = _write_raw_project(tmp_path, raw, "unknown_crc.stnp")
+    out = emit_c(load_project(project, _companion_build(project)), tmp_path / "out", _build_data())
+    harness = out / "unknown_crc_harness.c"
+    harness.write_text(r'''#include "Core/stnp.h"
+#include "Instance/stnp_instances.h"
+
+static STNP_U8 g_tx[STNP_NOTIFY_FIXED_SIZE + STNP_PAYLOAD_MAX + STNP_CRC_SIZE];
+static STNP_U16 g_tx_len = 0U;
+static STNP_U8 g_notify = 0U;
+static STNP_U8 g_crc = 0U;
+
+static STNP_Result CaptureWrite(const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_U16 i;
+    if (length > (STNP_U16)sizeof(g_tx)) return STNP_ERR_LENGTH;
+    for (i = 0U; i < length; i++) g_tx[i] = data[i];
+    g_tx_len = length;
+    return STNP_OK;
+}
+
+static void OnUnknown(STNP_UnknownReason reason, const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_UNUSED(data);
+    STNP_UNUSED(length);
+    if (reason == STNP_UNKNOWN_CRC) g_crc++;
+}
+
+void STNP_Notify_Callback(
+    STNP_U8 source,
+    STNP_U8 notify_code,
+    STNP_U16 result,
+    const STNP_U8 *payload,
+    STNP_U8 length)
+{
+    STNP_UNUSED(source); STNP_UNUSED(notify_code); STNP_UNUSED(result);
+    STNP_UNUSED(payload); STNP_UNUSED(length);
+    g_notify++;
+}
+
+int main(void)
+{
+    STNP_TaskFrame task;
+    STNP_U8 bad[STNP_TASK_FIXED_SIZE + STNP_PAYLOAD_MAX + STNP_CRC_SIZE];
+    STNP_U16 bad_len = 0U;
+    STNP_U8 chunk[128];
+    STNP_U16 i;
+    STNP_U16 total;
+    STNP_Result result;
+
+    if ((STNP_Init(CaptureWrite) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 1;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    if (STNP_Notify_Send(
+            STNP_INSTANCE_CHASSISMAIN_ID,
+            CHASSIS_NOTIFY_DONE,
+            CHASSIS_OK,
+            STNP_NULL) != STNP_OK) return 2;
+    task.target = STNP_INSTANCE_CHASSISMAIN_ID;
+    task.code = CHASSIS_CMD_STOP;
+    task.length = 0U;
+    if (STNP_Frame_BuildTask(&task, bad, (STNP_U16)sizeof(bad), &bad_len) != STNP_OK) return 3;
+    if (bad_len == 0U) return 4;
+    bad[bad_len - 1U] ^= 0xFFU;
+    if ((STNP_U16)(bad_len + g_tx_len) > (STNP_U16)sizeof(chunk)) return 5;
+    for (i = 0U; i < bad_len; i++) chunk[i] = bad[i];
+    for (i = 0U; i < g_tx_len; i++) chunk[bad_len + i] = g_tx[i];
+    total = (STNP_U16)(bad_len + g_tx_len);
+    if (STNP_Transport_Receive(chunk, total) != STNP_OK) return 6;
+    result = STNP_Process();
+    if (result == STNP_OK || result == STNP_IDLE) return 7;
+    if (g_crc != 1U) return 8;
+    if (STNP_Process() != STNP_OK) return 9;
+    if (g_notify != 0U) return 10;
+    if (STNP_Dispatch() != STNP_OK) return 11;
+    return (g_notify == 1U && g_crc == 1U) ? 0 : 12;
+}
+''', encoding="utf-8")
+    if shutil.which("gcc") is None:
+        pytest.skip("gcc not available")
+    exe = out / "unknown_crc_test"
+    sources = []
+    for pattern in ("Core/*.c", "Module/*.c", "Module/*/*.c", "Instance/*.c"):
+        sources.extend(str(p) for p in sorted(out.glob(pattern)))
+    sources.append(str(harness))
+    sources.append(str(_write_harness_link_stubs(out, raw_callback=False)))
+    subprocess.run(
+        ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic", "-I.", *sources, "-o", str(exe)],
+        cwd=out, check=True, capture_output=True, text=True,
+    )
+    subprocess.run([str(exe)], cwd=out, check=True)
+
+
+def test_unknown_frame_c_05_sof_second_switch(tmp_path: Path):
+    out = emit_c(load_project(DEMO, BUILD), tmp_path, _build_data())
+    harness = out / "unknown_sof_harness.c"
+    harness.write_text(r'''#include "Core/stnp.h"
+#include "Instance/stnp_instances.h"
+
+static STNP_U8 g_sof = 0U;
+
+static void OnUnknown(STNP_UnknownReason reason, const STNP_U8 *data, STNP_U16 length)
+{
+    if (reason == STNP_UNKNOWN_SOF && length == 1U && data != STNP_NULL)
+    {
+        g_sof++;
+    }
+}
+
+static STNP_Result DummyWrite(const STNP_U8 *data, STNP_U16 length)
+{
+    STNP_UNUSED(data);
+    STNP_UNUSED(length);
+    return STNP_OK;
+}
+
+int main(void)
+{
+    STNP_U8 noise[8];
+    STNP_U8 i;
+    if ((STNP_Init(DummyWrite) != STNP_OK) || (STNP_Instances_Init() != STNP_OK)) return 1;
+    STNP_UnknownFrame_SetCallback(OnUnknown);
+    STNP_UnknownFrameCallback_Enable(STNP_ENABLE);
+    for (i = 0U; i < 8U; i++) noise[i] = (STNP_U8)i;
+    if (STNP_Transport_Receive(noise, 8U) != STNP_OK) return 2;
+    if (STNP_Process() != STNP_IDLE) return 3;
+    return (g_sof == 7U) ? 0 : 4;
+}
+''', encoding="utf-8")
+    exe = _compile(
+        out,
+        main=harness,
+        extra_cflags=["-DSTNP_UNKNOWN_REPORT_SOF=1"],
+        exe_name="unknown_sof_test",
+    )
+    subprocess.run([str(exe)], cwd=out, check=True)
+

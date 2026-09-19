@@ -79,6 +79,7 @@ Sensor_Result Sensor_ValidateGenerated(
 
 /* Module-level Notify callback. One callback per Module, optional at runtime. */
 void Sensor_NotifyCallbackEnable(STNP_EnableState state);
+STNP_U8 Sensor_NotifyCallbackIsEnabled(void);
 void Sensor_NotifyCallback(
     SensorHandle *self,
     STNP_U8 notify_code,

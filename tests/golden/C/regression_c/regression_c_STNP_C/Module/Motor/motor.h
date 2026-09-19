@@ -80,6 +80,7 @@ Motor_Result Motor_ValidateGenerated(
 
 /* Module-level Notify callback. One callback per Module, optional at runtime. */
 void Motor_NotifyCallbackEnable(STNP_EnableState state);
+STNP_U8 Motor_NotifyCallbackIsEnabled(void);
 void Motor_NotifyCallback(
     MotorHandle *self,
     STNP_U8 notify_code,

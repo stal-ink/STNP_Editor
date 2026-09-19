@@ -1,6 +1,31 @@
 # 7. 迁移指南
 
-本页给从 0.8.2 迁到 0.9 的工程维护者：先看破坏性四点与对照表，再按清单改文件并用 `stnpe generate` / `check` 校验。更早版本的记录仅作追溯。
+本页先给 **0.9.0 → 0.9.1** 的运行时语义迁移，再给从 0.8.2 迁到 0.9 的工程维护者：先看破坏性四点与对照表，再按清单改文件并用 `stnpe generate` / `check` 校验。更早版本的记录仅作追溯。
+
+## 7.0 0.9.0 → 0.9.1：Notify 独占与观察面
+
+Wire、`.stnp` schema、`notify_dispatch_receive` 键名 **不变**。这是接收分发与诊断面的破坏性语义，不是静默 bugfix。重新用 0.9.1 生成即可；不要指望兼容开关把并行找回来。
+
+### 必须改的用法
+
+| 0.9.0 行为 | 0.9.1 |
+|---|---|
+| 模块 typed / `<Module>_NotifyCallback` 与全局同时收到同一帧 | **独占**：模块认领后全局 0 次 |
+| Python `notify_dispatch_receive_disable()` 让 `@stnp.on_notify` 也不跑 | **不变**（§8.3）：DR 关 = 整条不投递。0.9.1 只改独占，不改 DR 管辖范围 |
+| Python 全局对已知码收到 dataclass / `NotificationDescriptor` | 全局只有两种 raw 形：未知 Instance `(source_id, code, result, bytes)`；已知 Instance `(instance, code, result, bytes)` |
+| 非法帧 / 未知 target 静默丢（或 Python 计入 `callback_errors`） | 可选两道闸回调，**默认关**。要看：C `SetCallback` + `Enable`；Python `@stnp.on_unknown_frame` 再 `unknown_frame_callback_enable()`（装饰器不自动 enable） |
+| 无链路打点 | C：`-DSTNP_DEBUG=1`；Python：`stnp.trace.debug` / `format`，默认关；`stnp.init()` 会 `trace.load()` |
+
+C 全局 `STNP_Notify_Callback` 仍恒可调用（未做成可空指针，那是 0.9.2）。C `STNP_UNKNOWN_NOTIFY` 枚举在 0.9.1 **不会开火**。
+
+### 建议检查清单
+
+1. 若既 Enable 了模块 Notify callback 又实现了 `stnp_notify_callback.c` / `@stnp.on_notify`：认领后全局不再打印同一 `SENSOR.DATA`。需要全局嗅探时，不要 Enable 模块 callback，也不要挂 typed `.func`。
+2. `stnp.notify_dispatch_receive_disable()` 仍会关掉 typed 与 `@stnp.on_notify`。发送不受影响。
+3. 改写全局 callback 签名，去掉对 `NotificationDescriptor` / payload dataclass 的依赖。
+4. 未知帧、`trace.debug`、`trace.format` 默认都是关着的；打开后自行节流。SOF 噪声还要第二开关。
+
+---
 
 ## 7.1 0.8.2 → 0.9：破坏性重构
 

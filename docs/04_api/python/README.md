@@ -1,6 +1,6 @@
 # Python API
 
-本页给 Python 使用者：STNP Editor 0.9.0 生成包的标准签名来源。示例以生成后的顶层包 `stnp` 为准，取证于 `tests/golden/python/regression_py/regression_py_STNP_Python/stnp/**` 与对应模板。
+本页给 Python 使用者：STNP Editor 0.9.1 生成包的标准签名来源。示例以生成后的顶层包 `stnp` 为准，取证于 `tests/golden/python/regression_py/regression_py_STNP_Python/stnp/**` 与对应模板。
 
 Python 与 C 共用同一份 IR 和相同的 wire 协议，但执行模型面向有操作系统的环境：descriptor、dataclass、装饰器、调用线程 TX + RX 线程 + Dispatch 线程。不要用 C 的 `Implementation/` 或裸机 `Process`/`Dispatch` 循环去理解本页。
 
@@ -97,7 +97,7 @@ stnp.task.MotorLeft.MOVE(payload)
 - 基础类型范围；
 - `.stnp` 中配置的 `min / max`。
 
-接收时首先检查 Payload 长度并反序列化为生成 dataclass；业务范围检查应通过 Command 校验函数完成。
+接收时首先检查 Payload 长度并反序列化为生成 dataclass；业务范围检查应通过 Command 校验函数完成。生成的 payload dataclass 带 `to_display() -> str`（字段 `name=value` 空格分隔，顺序与 `.stnp` 声明相同），供 `stnp.trace.format` 默认行使用。
 
 ---
 
@@ -485,36 +485,22 @@ Notify:
 
 ---
 
-## 10. 全局 Notify callback：`@stnp.on_notify`
+## 10. 全局 Notify callback：`@stnp.on_notify`（独占）
 
-如果需要观察所有 Notify，可以注册全局 callback：
+0.9.1 **module XOR global**：模块 `.func` 认领后，`@stnp.on_notify` **不再**收同一帧。全局 **禁止**再收到 `NotificationDescriptor` 或解码 dataclass。合法形只有两种 raw：
+
+| 条件 | 调用 |
+|---|---|
+| 未知 Instance | `(source_id, notify_code, result, raw_payload_bytes)` |
+| 已知 Instance（未知码，或已知码但 typed `fn is None`，或 DR 关闭） | `(instance, notify_code, result, raw_payload_bytes)` |
 
 ```python
 @stnp.on_notify
-def on_any_notify(instance, notification, result, payload):
-    print(instance, notification, result, payload)
+def on_any_notify(instance, code, result, payload):
+    print(instance, code, result, payload)
 ```
 
-对**已识别的 Instance + Notification**，参数为：
-
-```text
-InstanceDefinition
-NotificationDescriptor
-ModuleResult / int
-生成 Payload dataclass / None
-```
-
-对于无法识别的路由，fallback 会保留更原始的信息：
-
-```text
-未知 Instance:
-(source_id, notify_code, result, raw_payload_bytes)
-
-已知 Instance、未知 Notify code:
-(instance, notify_code, result, raw_payload_bytes)
-```
-
-因此全局 callback 如果用于协议诊断，应允许 descriptor/int 与 dataclass/bytes 两种情况。
+只观察业务 Notify 请用 `@Module.notify.NAME.func`。全局-only 用户不要注册 typed `.func`。无 `on_log`。
 
 ---
 
@@ -641,7 +627,7 @@ stnp.shutdown()
 
 它会停止 RX/Dispatch，并关闭 Transport。
 
-### 13.4 Notify 接收分发运行时门控（0.9）
+### 13.4 Notify 接收分发运行时门控（0.9.1）
 
 初值来自 `protocol.options.notify_dispatch_receive.enabled`，可在运行时切换：
 
@@ -651,13 +637,31 @@ stnp.notify_dispatch_receive_disable()
 enabled = stnp.notify_dispatch_receive_is_enabled()
 ```
 
-关闭时，收到的 Notify 帧不进入 Module callback 与 `@stnp.on_notify`。发送 `stnp.notify...` 不受此开关影响。该门控不改变 wire 格式。
+**整条 Notify 接收分发路径的总门。** 关闭时 `@Notification.func` 与 `@stnp.on_notify` **都不投递**。发送 `stnp.notify...` 不受此开关影响。该门控不改变 wire 格式。DR 开时再按独占：模块认领则全局 0 次；未认领才进 `@stnp.on_notify`。
+
+### 13.5 未知帧回调（两道闸，默认关）
+
+```python
+@stnp.on_unknown_frame
+def on_unknown(reason, data):
+    print(reason, len(data), data[:16].hex())
+
+stnp.unknown_frame_callback_enable()
+stnp.unknown_frame_callback_disable()
+stnp.unknown_frame_callback_is_enabled()
+```
+
+装饰器 **只赋值**回调并 return fn，**禁止**自动 enable。`reason` 只能是 `"sof" | "len" | "crc" | "task" | "notify"`。SOF 另需 `runtime.unknown_report_sof = True`（默认 `False`）。用户回调 `raise` 被隔离，不增加 `callback_errors`。无 `on_log`。
+
+### 13.6 `stnp.trace`（debug + format）
+
+`stnp.trace.debug` 打站点名；`stnp.trace.format` 打 Task/Notify 字段。都不是日志。`stnp.init()` 调用 `trace.load()`（`config/trace.yaml`）。默认关。详见 [链路验证](../../06_guides/trace_and_breakpoints.md)。
 
 ---
 
 ## 14. 配置文件与优先级
 
-三类配置必须分开理解。
+三类配置必须分开理解。`config/trace.yaml` 是第四份、只服务 `stnp.trace`，禁止与下面三份混用。
 
 ### 14.1 协议配置：Editor 生成，不手改
 
@@ -671,9 +675,10 @@ stnp/protocol/protocol.yaml
 
 ```text
 config/stnp.yaml
+config/trace.yaml
 ```
 
-例如：
+`stnp.yaml` 例如：
 
 ```yaml
 transport: uart
@@ -689,7 +694,7 @@ Runtime 配置查找顺序：
 3. 当前工作目录 `config/stnp.yaml`；
 4. 生成工程自带 `config/stnp.yaml`。
 
-显式 `queue_size=` / `warn_missing=` 参数优先于 YAML。
+显式 `queue_size=` / `warn_missing=` 参数优先于 YAML。`trace.yaml` **不要**塞进 `stnp.yaml`；由 `stnp.init()` → `trace.load()` 按独立查找链加载，见 [链路验证](../../06_guides/trace_and_breakpoints.md)。
 
 ### 14.3 UART SDK 配置
 
@@ -765,7 +770,7 @@ stnp-dispatch
   └─ payload decode
        ├─ 校验函数
        ├─ CMD implementation
-       └─ Notify callback
+       └─ Notify typed / 全局 fallback（独占）
 ```
 
 只有两个后台线程：RX + Dispatch。没有额外 TX worker。
@@ -872,7 +877,13 @@ Notify Frame 本身携带 ResultCode，所以 Runtime 会把它传给 callback�
 不必须。业务文件可以放在任意用户目录；关键是必须在 `stnp.init()` 和接收业务帧前被 import。可选 `User/` scaffold 只是脚手架。
 
 **`notify_dispatch_receive_disable()` 之后还能发 Notify 吗？**  
-能。该开关只门控本端接收分发，不阻止发送。
+能。该开关门控本端 Notify **接收分发路径**，不阻止发送。关闭后 `@stnp.on_notify` 与 typed 都不触发。
+
+**模块 `.func` 认领后 `on_notify` 还会收到同一帧吗？**  
+不会。0.9.1 独占：typed 认领则全局 0 次。
+
+**有没有 `stnp.log` / `on_log`？**  
+没有。观察面只有 `stnp.trace.debug` 与 `stnp.trace.format`。
 
 ---
 

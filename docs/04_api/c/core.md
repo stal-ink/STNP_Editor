@@ -27,7 +27,7 @@ STNP_Result STNP_Transport_Receive(
 );
 ```
 
-只把字节复制进有界 RX Ring，然后返回。不解析帧，不执行用户 Handler / Notify callback，因此适合放在短的传输中断路径。
+只把字节复制进有界 RX Ring，然后返回。不解析帧，不执行用户 Handler / Notify callback，因此适合放在短的传输中断路径。`STNP_DEBUG=1` 时成功发布 `tail` 之后打 `STNP_BP_RX_COPY`；禁止在此构帧、回调、发送。
 
 - 整块可容纳：`STNP_OK`。发布 `tail` 前先复制完整输入块，Process 看不到半截提交。
 - RX Ring 空间不足：`STNP_ERR_BUFFER`，本输入块不做部分写入。
@@ -58,7 +58,7 @@ STNP_Result STNP_Dispatch(void);
 
 Job 在极短的 runtime lock 内认领，Handler / Callback 在锁外执行。官方 FreeRTOS SDK 可让多个 Worker 并发调用；同一 Instance/source 串行，不同 key 可并发。`g_instance_busy[key]` 保证同一 key 不会被两个 Worker 同时执行。
 
-Notify 接收分发另受 `STNP_NotifyDispatchReceive_IsEnabled()` 门控：关闭时 Dispatch 仍可能认领 Notify Job，但不调用 Module callback（见 `stnp_notify.c` 中的运行时开关）。发送路径不受该开关影响。
+Notify 接收分发另受 `STNP_NotifyDispatchReceive_IsEnabled()` 门控：关闭时 Dispatch 仍可能认领 Notify Job，但 `STNP_Notify_Dispatch` 直接返回 —— 不走模块、也不调全局 `STNP_Notify_Callback`。发送路径不受该开关影响。0.9.1 在 DR 开且模块已认领时全局不再收同一帧。
 
 ## `STNP_Transport_Write`
 
@@ -93,6 +93,22 @@ for (;;)
 ```
 
 ISR 或轮询路径只调用 `STNP_Transport_Receive()`；协议推进与用户业务留在主循环（或 FreeRTOS Protocol Task / Worker）。
+
+## 未知帧回调（两道闸，默认关）
+
+头文件 `Core/stnp_unknown.h`（经 `stnp.h` 包含）：
+
+```c
+void STNP_UnknownFrame_SetCallback(STNP_UnknownFrameFn fn); /* NULL = 清除 */
+void STNP_UnknownFrameCallback_Enable(STNP_EnableState state); /* 默认 STNP_DISABLE */
+STNP_U8 STNP_UnknownFrameCallback_IsEnabled(void);
+```
+
+`SetCallback` **并且** `Enable` 都要，缺一则真零调用。reason：`STNP_UNKNOWN_SOF` / `LEN` / `CRC` / `TASK` / `NOTIFY`。SOF 仅当预编译 `STNP_UNKNOWN_REPORT_SOF=1`（默认 0）才上报。`STNP_UNKNOWN_NOTIFY` 枚举保留，C 0.9.1 **禁止触发**。`data` 指针禁止持有出函数。队列满（`STNP_ERR_BUFFER`）不是 unknown。合法业务帧即使已 enable 也不进本回调。
+
+## `STNP_DEBUG`
+
+仅预编译 0/1，见 [platform.md](platform.md) 与 [链路验证](../../06_guides/trace_and_breakpoints.md)。不是日志，无 `STNP_LOG*`。
 
 ---
 
